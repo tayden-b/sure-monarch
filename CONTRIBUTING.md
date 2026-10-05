@@ -27,6 +27,48 @@ To get setup for local development, you have two options:
    - A `selenium/standalone-chrome` service is included in the Dev Container setup, so **system tests work out of the box** — no local Chrome required.
    - Run system tests: `DISABLE_PARALLELIZATION=true bin/rails test:system`
    - Watch the browser live at `http://localhost:7900` or `http://localhost:4444` (password: `secret`)
+
+   <details>
+   <summary>Running the devcontainer without VS Code (plain docker compose)</summary>
+
+   ```sh
+   cp .env.local.example .env.local
+   cp .env.test.example .env.test
+   docker compose -f .devcontainer/docker-compose.yml up -d --build
+   docker compose -f .devcontainer/docker-compose.yml exec -T app bin/setup
+   ```
+
+   Then start the app. `bin/dev` needs a TTY, so prefer:
+
+   ```sh
+   docker compose -f .devcontainer/docker-compose.yml exec app bin/dev
+   ```
+
+   For detached/non-interactive use (CI, scripts):
+
+   ```sh
+   docker compose -f .devcontainer/docker-compose.yml exec -dT app \
+     bash -c 'nohup bin/dev > log/dev.log 2>&1 &'
+   ```
+
+   Fill in the empty keys in `.env.local` / `.env.test` — disposable values
+   only. Generate them inside the container:
+
+   ```sh
+   docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rails db:encryption:init
+   ```
+
+   - `.env.test` also sets `DATABASE_URL` (to the devcontainer's postgres
+     superuser — the suite needs it for fixture trigger handling). Required by
+     tests that open a second PG session; use `localhost` instead of `db`
+     when testing against a local Postgres.
+   - Tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rails test`
+   - System tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app env DISABLE_PARALLELIZATION=true bin/rails test:system`
+   - Optionally load synthetic demo data (`user@example.com` / `Password1!`):
+     `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rake demo_data:default`
+
+   </details>
+
 2. Local Development
    - [Mac Setup Guide](https://github.com/we-promise/sure/wiki/Mac-Dev-Setup-Guide)
    - [Linux Setup Guide](https://github.com/we-promise/sure/wiki/Linux-Dev-Setup-Guide)
