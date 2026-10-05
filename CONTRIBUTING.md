@@ -38,7 +38,9 @@ To get setup for local development, you have two options:
    docker compose -f .devcontainer/docker-compose.yml exec -T app bin/setup
    ```
 
-   Then start the app. `bin/dev` needs a TTY, so prefer:
+   Then start the app. `bin/dev` works both interactively and detached —
+   the Tailwind watcher stays alive without a TTY (it polls with
+   `tailwindcss:watch[always]`):
 
    ```sh
    docker compose -f .devcontainer/docker-compose.yml exec app bin/dev
@@ -51,21 +53,37 @@ To get setup for local development, you have two options:
      bash -c 'nohup bin/dev > log/dev.log 2>&1 &'
    ```
 
-   Fill in the empty keys in `.env.local` / `.env.test` — disposable values
-   only. Generate them inside the container:
+   The setup above is the verified passing baseline — no keys needed.
+   - `.env.test` sets `DATABASE_URL` to the devcontainer's postgres
+     superuser (the suite needs it for fixture trigger handling). Required
+     by tests that open a second PG session; for a local Postgres export
+     `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DB_HOST` or edit the URL.
+   - Tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rails test`
+   - System tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app env DISABLE_PARALLELIZATION=true bin/rails test:system`
+   - Optionally load synthetic demo data (`user@example.com` / `Password1!`):
+     `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rake demo_data:default`
+
+   **Optional — disposable encryption keys (diagnostic path, not part of
+   the passing baseline):**
+
+   The app encrypts provider/API tokens at rest with
+   `ACTIVE_RECORD_ENCRYPTION_*` keys. To exercise that locally, generate
+   throwaway values inside the container and paste them into `.env.local`
+   (see `.env.local.example`):
 
    ```sh
    docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rails db:encryption:init
    ```
 
-   - `.env.test` also sets `DATABASE_URL` (to the devcontainer's postgres
-     superuser — the suite needs it for fixture trigger handling). Required by
-     tests that open a second PG session; use `localhost` instead of `db`
-     when testing against a local Postgres.
-   - Tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rails test`
-   - System tests: `docker compose -f .devcontainer/docker-compose.yml exec -T app env DISABLE_PARALLELIZATION=true bin/rails test:system`
-   - Optionally load synthetic demo data (`user@example.com` / `Password1!`):
-     `docker compose -f .devcontainer/docker-compose.yml exec -T app bin/rake demo_data:default`
+   Use disposable values only — never production keys, never committed
+   `.env` files. **This setup is not approved for real financial data:**
+   connect synthetic/demo accounts only. Encryption coverage is partial —
+   enabling test keys turns on the encryption-gated tests, but upstream
+   `encrypt_fixtures` double-encodes `encrypts` attributes on jsonb
+   columns, so ~140 fixture reads raise
+   `ActiveRecord::Encryption::Errors::Decryption` (an upstream bug, not a
+   setup error). Leave the keys commented in `.env.test` for a green
+   suite; the gated tests skip.
 
    </details>
 
