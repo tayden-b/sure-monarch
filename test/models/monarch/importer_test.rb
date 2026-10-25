@@ -235,6 +235,18 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal mapping_for("tags", "tag-reimb").record_id.to_s, tags_action.value
   end
 
+  test "rules carry Monarch order into position" do
+    run_import
+
+    assert_equal 0, mapping_for("rules", "rule-1").record.position
+    assert_equal 1, mapping_for("rules", "rule-2").record.position
+    assert_equal 2, mapping_for("rules", "rule-3").record.position
+
+    ordered = @family.rules.where(id: MonarchSourceMapping.where(family: @family, collection: "rules").select(:record_id)).ordered
+    assert_equal %w[rule-1 rule-2 rule-3],
+      ordered.map { |r| MonarchSourceMapping.find_by(family: @family, collection: "rules", record: r).monarch_id }
+  end
+
   test "recurring streams map frequency and sign" do
     run_import
 

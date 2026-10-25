@@ -653,6 +653,7 @@ Rails.application.routes.draw do
     member do
       get :confirm
       post :apply
+      patch :move
     end
 
     collection do
@@ -660,6 +661,7 @@ Rails.application.routes.draw do
       get :confirm_all
       post :apply_all
       post :clear_ai_cache
+      patch :reorder
     end
   end
 

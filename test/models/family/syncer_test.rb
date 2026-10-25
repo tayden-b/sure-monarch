@@ -63,7 +63,7 @@ class Family::SyncerTest < ActiveSupport::TestCase
     )
 
     # Create a disabled rule
-    disabled_rule = @family.rules.create!(
+    @family.rules.create!(
       resource_type: "transaction",
       active: false,
       actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
@@ -71,12 +71,9 @@ class Family::SyncerTest < ActiveSupport::TestCase
 
     syncer = Family::Syncer.new(@family)
 
-    # Stub the relation to return our specific instances so expectations work
-    @family.rules.stubs(:where).with(active: true).returns([ active_rule ])
-
-    # Expect apply_later to be called only for the active rule
-    active_rule.expects(:apply_later).once
-    disabled_rule.expects(:apply_later).never
+    # Post-sync rule application is one ordered batch job (position order +
+    # first-match-wins claims), restricted to active rules via active_only.
+    ApplyAllRulesJob.expects(:perform_later).with(@family, execution_type: "scheduled", active_only: true, ignore_attribute_locks: false).once
 
     # Mock the account and plaid item syncs to avoid side effects
     Account.any_instance.stubs(:sync_later)

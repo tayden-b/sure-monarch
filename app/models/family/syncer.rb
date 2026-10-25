@@ -23,9 +23,9 @@ class Family::Syncer
     family.auto_match_transfers!
 
     Rails.logger.info("Applying rules for family #{family.id}")
-    family.rules.where(active: true).each do |rule|
-      rule.apply_later
-    end
+    # One ordered batch job (not a job per rule) so rules apply in `position`
+    # order and earlier rules' field claims are honored — Monarch semantics.
+    ApplyAllRulesJob.perform_later(family, execution_type: "scheduled", active_only: true, ignore_attribute_locks: false)
   end
 
   private
