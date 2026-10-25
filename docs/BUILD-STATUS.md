@@ -50,7 +50,7 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 
 ## Integration gate
 
-Not started. After Wave 2: one worker rehearses the full setup on a clean VM —
+In progress — dispatched after W2-F merged. One worker rehearses the full setup on a clean VM —
 deploy kit, synthetic archive import + reconciliation counts, every parity
 surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 
@@ -61,14 +61,12 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   Tayden after he creates dashboard keys (docs/setup/PLAID.md step 2).
 - Webhooks need Funnel permanently on for real-time pushes; manual Sync is the
   documented alternative if he doesn't want the app public 24/7.
-- Importer defers: group-scoped/future budget rows, daily recurring
-  frequencies — accepted limitations. Rule ordering now lands via W2-F
-  (`rules.position` exists post-T4); cash-position reconciliation is being
-  verified by W2-F. (`needsReview`/`reviewStatus` UI filtering landed via
-  T2's review queue.)
-- T10 follow-up: `Demo::Generator#create_transfer!` wrote legs with
-  `kind: "standard"` — **being fixed by W2-F** (legs get
-  `Transfer.kind_for_account`/`funds_movement` like real transfers).
+- Importer defers remaining: group-scoped/future budget rows, daily
+  recurring frequencies — accepted limitations (documented in RUNBOOK).
+  **Fixed by W2-F** (#17): rule positions now imported via `Rule.reorder!`
+  in Monarch order; cash-kind holdings double-count in `Balance::SyncCache`
+  fixed (fixture brokerage was 25500 vs 25000 — now reconciles).
+- T10 follow-up: `Demo::Generator#create_transfer!` leg kinds — **fixed by W2-F** (#17): outflow = `Transfer.kind_for_account(destination)`, inflow = `funds_movement`.
 - Gemini has no provider — manual/CSV account path documented.
 - Pre-existing test-env failures on baseline (eval/langfuse, simplefin ×3,
   hostings ×2, PG advisory-lock flake) reproduce without any changes — not
