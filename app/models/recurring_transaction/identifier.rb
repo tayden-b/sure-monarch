@@ -35,6 +35,22 @@ class RecurringTransaction
     # entries from an account whose type was never set.
     NON_BILLABLE_ACCOUNTABLE_TYPES = %w[Investment Crypto].freeze
 
+    # A transaction is one leg of an account-pair transfer by membership in
+    # `transfers`, not only by its kind stamp: legs written through paths that
+    # never set a kind (demo data, older imports) keep "standard" yet are still
+    # halves of an internal move. Collecting both legs offers the same payment
+    # twice -- once as spending on the source account and once as income on the
+    # destination, rendered identically -- and the destination leg is never a
+    # bill or income at all. Membership is the ground truth; the kind filter
+    # stays for legs whose Transfer row is already gone.
+    TRANSFER_LEGS_SQL = <<~SQL.squish.freeze
+      transactions.id IN (
+        SELECT inflow_transaction_id FROM transfers
+        UNION
+        SELECT outflow_transaction_id FROM transfers
+      )
+    SQL
+
     # Read-only: recurring-shaped patterns NOT already covered by an
     # existing series, for the add-dialog picker. Two consistent
     # occurrences are enough to OFFER a candidate (the automatic pipeline
@@ -69,6 +85,7 @@ class RecurringTransaction
         .where("entries.date >= ?", lookback.ago.to_date)
         .where("entries.amount < 0")
         .where.not("transactions.kind": Transaction::TRANSFER_KINDS)
+        .where.not(TRANSFER_LEGS_SQL)
         .includes(:entryable)
         .to_a
 
@@ -218,6 +235,7 @@ class RecurringTransaction
           .where("accounts.accountable_type IS NULL OR accounts.accountable_type NOT IN (?)", NON_BILLABLE_ACCOUNTABLE_TYPES)
           .where("entries.date >= ?", three_months_ago)
           .where.not("transactions.kind": Transaction::TRANSFER_KINDS)
+          .where.not(TRANSFER_LEGS_SQL)
           .includes(:entryable)
           .to_a
 

@@ -148,6 +148,13 @@ en:
       title: Your bills live on the Bills page
       description: Declare, edit, pause and pay everything from there. This page controls detection.
       cta: Open all bills
+    monthly_total:
+      label: Estimated monthly recurring
+      per_month: / month
+      caption:
+        one: "%{count} active recurring item"
+        other: "%{count} active recurring items"
+      partial: "%{count} more in currencies without an exchange rate"
     settings:
       enable_label: Enable Recurring Transactions
       enable_description: Automatically detect recurring transaction patterns and show upcoming projected transactions.
