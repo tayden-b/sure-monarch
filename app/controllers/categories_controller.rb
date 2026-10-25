@@ -5,7 +5,8 @@ class CategoriesController < ApplicationController
 
   def index
     @categories = Current.family.categories.alphabetically_by_hierarchy.to_a
-    @category_groups = Category::Group.for(@categories)
+    @groups = Current.family.category_groups.ordered.to_a
+    @categories_by_group = @categories.group_by(&:category_group_id)
     @category_ids_with_transactions = Category.ids_with_transactions(
       family: Current.family,
       category_ids: @categories.map(&:id)
@@ -134,6 +135,7 @@ class CategoriesController < ApplicationController
       else
         []
       end
+      @category_groups = Current.family.category_groups.ordered
     end
 
     def set_transaction
@@ -143,7 +145,7 @@ class CategoriesController < ApplicationController
     end
 
     def category_params
-      params.require(:category).permit(:name, :color, :parent_id, :lucide_icon)
+      params.require(:category).permit(:name, :color, :parent_id, :lucide_icon, :classification, :category_group_id)
     end
 
     def category_merge_params

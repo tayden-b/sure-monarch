@@ -64,6 +64,10 @@
         <% unless category.parent? %>
           <%= f.select :parent_id, categories.pluck(:name, :id), { include_blank: t(".unassigned"), label: t(".parent_category_label") }, disabled: category.parent?, data: { action: "change->color-icon-picker#handleParentChange" } %>
         <% end %>
+        <% unless category.subcategory? %>
+          <%= f.select :category_group_id, @category_groups.map { |group| [group.name, group.id] }, { include_blank: t(".no_group"), label: t(".group_label") } %>
+          <%= f.select :classification, Category::CLASSIFICATIONS.map { |c| [t(".classification_options.#{c}"), c] }, { label: t(".classification_label") }, disabled: category.category_group.present? %>
+        <% end %>
       </div>
     </section>
 
