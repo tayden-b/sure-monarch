@@ -201,6 +201,12 @@ class Account::ProviderImportAdapter
       # Track if this is a new posted transaction (for fuzzy suggestion after save)
       is_new_posted = entry.new_record? && !incoming_pending
 
+      # Track whether the entry is genuinely new before any save below persists
+      # it: Entryable has_one :entry with touch: true, so the first
+      # apply_provider_extra's transaction save cascades to the entry and
+      # entry.new_record? reads false for the rest of the method.
+      is_new_record = entry.new_record?
+
       # Preserve the original pending date across all syncs:
       # - First claim: pending_entry_date is captured from the pending match above
       # - Subsequent syncs: entry already exists (no pending_match found), so check
@@ -240,6 +246,14 @@ class Account::ProviderImportAdapter
 
       # Persist extra provider metadata on the transaction (non-enriched; always merged)
       apply_provider_extra(entry, extra, replace_extra_namespaces)
+
+      # Auto-flag for the review queue when the source data asked for it
+      # (e.g. Monarch's needsReview/reviewStatus). Genuinely new rows only — a
+      # provider can't un-resolve review on a row the user already cleared, and
+      # claimed duplicates/pending matches are pre-existing rows, not new ones.
+      if is_new_record && Setting.import_auto_flag_needs_review && provider_requests_review?(extra)
+        entry.transaction.needs_review = true
+      end
 
       # Auto-detect investment activity labels for investment accounts
       detected_label = investment_activity_label
@@ -995,6 +1009,10 @@ class Account::ProviderImportAdapter
         }
       )
     )
+
+    # A pending row that may match a posted one is exactly the "provider
+    # pending mismatch" case the review queue exists for.
+    pending_transaction.mark_needs_review! if Setting.import_auto_flag_needs_review
   end
 
   # Auto-detects investment activity label from transaction name and amount
@@ -1061,6 +1079,25 @@ class Account::ProviderImportAdapter
       return @account_linked_to_any_goal if defined?(@account_linked_to_any_goal)
 
       @account_linked_to_any_goal = account.goal_accounts.exists?
+    end
+
+    # Whether any provider namespace in the incoming extra payload asks for
+    # review. Covers an explicit needs_review flag (Monarch's needsReview,
+    # stored as extra["monarch"]["needs_review"]) and Monarch's reviewStatus
+    # field, which arrives as "needs_review" when the row was flagged in
+    # Monarch but not yet reviewed there.
+    #
+    # @param extra [Hash, nil] provider metadata for the transaction
+    # @return [Boolean] whether the source asked for review
+    def provider_requests_review?(extra)
+      return false unless extra.is_a?(Hash)
+
+      boolean_type = ActiveModel::Type::Boolean.new
+      extra.deep_stringify_keys.values.any? do |namespace|
+        next false unless namespace.is_a?(Hash)
+
+        boolean_type.cast(namespace["needs_review"]) || namespace["review_status"] == "needs_review"
+      end
     end
 
     # Writes provider-owned metadata onto the transaction.

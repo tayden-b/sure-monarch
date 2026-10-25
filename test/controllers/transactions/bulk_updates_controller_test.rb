@@ -136,4 +136,43 @@ class Transactions::BulkUpdatesControllerTest < ActionDispatch::IntegrationTest
     transaction_entry.reload
     assert_equal [ new_tag.id ], transaction_entry.transaction.tag_ids
   end
+
+  test "bulk mark needs review and reviewed" do
+    transaction_entries = @user.family.entries.transactions.to_a
+
+    post transactions_bulk_update_url, params: {
+      bulk_update: {
+        entry_ids: transaction_entries.map(&:id),
+        needs_review: "true"
+      }
+    }
+
+    assert_redirected_to transactions_url
+    transaction_entries.each { |entry| assert entry.reload.transaction.needs_review? }
+
+    post transactions_bulk_update_url, params: {
+      bulk_update: {
+        entry_ids: transaction_entries.map(&:id),
+        needs_review: "false"
+      }
+    }
+
+    assert_redirected_to transactions_url
+    transaction_entries.each { |entry| assert_not entry.reload.transaction.needs_review? }
+  end
+
+  test "bulk needs_review false is applied, not dropped as blank" do
+    transaction_entry = @user.family.entries.transactions.first
+    transaction_entry.transaction.mark_needs_review!
+
+    post transactions_bulk_update_url, params: {
+      bulk_update: {
+        entry_ids: [ transaction_entry.id ],
+        needs_review: "false"
+      }
+    }
+
+    assert_redirected_to transactions_url
+    assert_not transaction_entry.reload.transaction.needs_review?
+  end
 end

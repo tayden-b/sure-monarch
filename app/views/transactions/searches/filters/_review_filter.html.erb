@@ -1,0 +1,26 @@
+<%# locals: (form:) %>
+
+<div class="p-2 space-y-3">
+  <div class="flex items-center gap-3" data-filter-name="needs_review">
+    <%= form.check_box :review_status,
+                           {
+                             multiple: true,
+                             checked: @q[:review_status]&.include?("needs_review"),
+                             class: "checkbox checkbox--light"
+                           },
+                           "needs_review",
+                           nil %>
+    <%= form.label :review_status, t(".needs_review"), value: "needs_review", class: "text-sm text-primary" %>
+  </div>
+  <div class="flex items-center gap-3" data-filter-name="reviewed">
+    <%= form.check_box :review_status,
+                           {
+                             multiple: true,
+                             checked: @q[:review_status]&.include?("reviewed"),
+                             class: "checkbox checkbox--light"
+                           },
+                           "reviewed",
+                           nil %>
+    <%= form.label :review_status, t(".reviewed"), value: "reviewed", class: "text-sm text-primary" %>
+  </div>
+</div>

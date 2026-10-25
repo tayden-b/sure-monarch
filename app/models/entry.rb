@@ -527,7 +527,15 @@ class Entry < ApplicationRecord
       }.compact_blank
 
       tag_ids = Array.wrap(bulk_update_params[:tag_ids]).reject(&:blank?)
-      has_updates = bulk_attributes.present? || update_tags
+
+      # needs_review is a workflow flag, not sync-owned data: it must bypass
+      # compact_blank (false.blank? is true, so "Mark reviewed" would be
+      # stripped) and it does not mark the entry user-modified — clearing a
+      # review flag shouldn't lock the row against provider sync.
+      review_param = bulk_update_params[:needs_review]
+      review_value = review_param.nil? ? nil : ActiveModel::Type::Boolean.new.cast(review_param)
+      update_needs_review = !review_value.nil?
+      has_updates = bulk_attributes.present? || update_tags || update_needs_review
 
       return 0 unless has_updates
 
@@ -548,6 +556,10 @@ class Entry < ApplicationRecord
               entry.transaction.record_category_usage! if entry.transaction?
               changed = true
             end
+          end
+
+          if update_needs_review && entry.transaction?
+            entry.transaction.update!(needs_review: review_value)
           end
 
           # Handle tags separately - only when explicitly requested

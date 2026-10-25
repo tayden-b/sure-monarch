@@ -5,11 +5,15 @@ class Transaction::Search
   # Automatic-categorization provenance filter values (used by the view)
   AI_STATUSES = %w[current history].freeze
 
+  # Review-queue filter values (used by the view)
+  REVIEW_STATUSES = %w[needs_review reviewed].freeze
+
   attribute :search, :string
   attribute :amount, :string
   attribute :amount_operator, :string
   attribute :types, array: true
   attribute :status, array: true
+  attribute :review_status, array: true
   attribute :accounts, array: true
   attribute :account_ids, array: true
   attribute :start_date, :string
@@ -42,6 +46,7 @@ class Transaction::Search
       query = apply_category_filter(query, categories)
       query = apply_type_filter(query, types)
       query = apply_status_filter(query, status)
+      query = apply_review_status_filter(query, review_status)
       query = apply_merchant_filter(query, merchants)
       query = apply_tag_filter(query, tags)
       query = apply_ai_status_filter(query, ai_status)
@@ -266,6 +271,22 @@ class Transaction::Search
       sql = "EXISTS (SELECT 1 FROM data_enrichments de WHERE de.enrichable_type = 'Transaction' AND de.enrichable_id = transactions.id AND de.attribute_name = 'category_id' AND de.source IN (:sources)"
       sql += " AND #{extra_condition}" if extra_condition
       sql + ")"
+    end
+
+    # Filter transactions by review state (needs review or reviewed).
+    # Mirrors apply_status_filter: selecting both means no filtering.
+    def apply_review_status_filter(query, statuses)
+      return query unless statuses.present?
+      return query if statuses.uniq.sort == REVIEW_STATUSES.sort # Both selected = no filter
+
+      case statuses.sort
+      when [ "needs_review" ]
+        query.needs_review
+      when [ "reviewed" ]
+        query.excluding_needs_review
+      else
+        query
+      end
     end
 
     # Filter transactions by status (pending or confirmed)
