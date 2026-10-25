@@ -669,6 +669,9 @@ Rails.application.routes.draw do
       get :sparkline
       patch :toggle_active
       patch :toggle_exclude_from_reports
+      patch :toggle_hide_from_list
+      patch :toggle_include_in_net_worth
+      patch :toggle_hide_in_budget
       patch :set_default
       patch :remove_default
       get :select_provider

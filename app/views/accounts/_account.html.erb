@@ -31,6 +31,24 @@
               <% end %>
             <% end %>
 
+            <% if account.hide_from_list? %>
+              <%= render DS::Tooltip.new(text: t("accounts.account.hidden_from_list_indicator"), as: :span) do %>
+                <%= icon("list-x", class: "w-3.5 h-3.5 text-secondary") %>
+              <% end %>
+            <% end %>
+
+            <% unless account.include_in_net_worth? %>
+              <%= render DS::Tooltip.new(text: t("accounts.account.excluded_from_net_worth_indicator"), as: :span) do %>
+                <%= icon("scale", class: "w-3.5 h-3.5 text-secondary") %>
+              <% end %>
+            <% end %>
+
+            <% if account.hide_in_budget? %>
+              <%= render DS::Tooltip.new(text: t("accounts.account.hidden_in_budget_indicator"), as: :span) do %>
+                <%= icon("calculator", class: "w-3.5 h-3.5 text-secondary") %>
+              <% end %>
+            <% end %>
+
             <% if account.shared? %>
               <%= icon("users", class: "w-3.5 h-3.5 text-secondary", title: account.owned_by?(Current.user) ? nil : account.owner&.display_name) %>
             <% end %>
@@ -109,6 +127,24 @@
               <% menu.with_item(variant: "button", text: t("accounts.account.include_in_reports"), href: toggle_exclude_from_reports_account_path(account), method: :patch, icon: "eye", data: { turbo_frame: :_top }) %>
             <% else %>
               <% menu.with_item(variant: "button", text: t("accounts.account.exclude_from_reports"), href: toggle_exclude_from_reports_account_path(account), method: :patch, icon: "eye-off", data: { turbo_frame: :_top }) %>
+            <% end %>
+
+            <% if account.hide_from_list? %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.show_in_lists"), href: toggle_hide_from_list_account_path(account), method: :patch, icon: "list", data: { turbo_frame: :_top }) %>
+            <% else %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.hide_from_list"), href: toggle_hide_from_list_account_path(account), method: :patch, icon: "list-x", data: { turbo_frame: :_top }) %>
+            <% end %>
+
+            <% if account.include_in_net_worth? %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.exclude_from_net_worth"), href: toggle_include_in_net_worth_account_path(account), method: :patch, icon: "scale", data: { turbo_frame: :_top }) %>
+            <% else %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.include_in_net_worth"), href: toggle_include_in_net_worth_account_path(account), method: :patch, icon: "scale", data: { turbo_frame: :_top }) %>
+            <% end %>
+
+            <% if account.hide_in_budget? %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.include_in_budget"), href: toggle_hide_in_budget_account_path(account), method: :patch, icon: "calculator", data: { turbo_frame: :_top }) %>
+            <% else %>
+              <% menu.with_item(variant: "button", text: t("accounts.account.exclude_from_budget"), href: toggle_hide_in_budget_account_path(account), method: :patch, icon: "calculator", data: { turbo_frame: :_top }) %>
             <% end %>
           <% end %>
 

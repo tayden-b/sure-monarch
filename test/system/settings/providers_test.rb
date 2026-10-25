@@ -24,7 +24,7 @@ class Settings::ProvidersTest < ApplicationSystemTestCase
     assert_selector "header h2", text: "Test Wallet"
     assert_text "Synthetic shop"
 
-    visit accounts_path
+    visit accounts_path(view: "connections")
     within "#financekit-accounts" do
       click_link "Test Wallet"
     end
@@ -51,7 +51,7 @@ class Settings::ProvidersTest < ApplicationSystemTestCase
     financekit_setup(user: @user)
     accept_and_apply
 
-    visit accounts_path
+    visit accounts_path(view: "connections")
     within "#financekit-accounts" do
       find("button[aria-haspopup='menu']").click
       click_link "Unlink from provider"
@@ -65,6 +65,7 @@ class Settings::ProvidersTest < ApplicationSystemTestCase
 
     assert_no_selector "dialog[open]"
     assert_current_path accounts_path
+    visit accounts_path(view: "connections")
     within "#manual-accounts" do
       click_link "Test Wallet"
     end

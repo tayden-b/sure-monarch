@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_25_195601) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_25_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -109,7 +109,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_195601) do
     t.boolean "enable_category_matcher", default: true, null: false
     t.boolean "exclude_from_reports", default: false, null: false
     t.uuid "family_id", null: false
+    t.boolean "hide_from_list", default: false, null: false
+    t.boolean "hide_in_budget", default: false, null: false
     t.uuid "import_id"
+    t.boolean "include_in_net_worth", default: true, null: false
     t.string "institution_domain"
     t.string "institution_name"
     t.jsonb "locked_attributes", default: {}

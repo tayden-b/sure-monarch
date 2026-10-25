@@ -44,7 +44,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     ensure_tailwind_build
     @user.update!(locale: "de")
 
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "a[href=?]",
@@ -55,7 +55,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
 
   test "index renders kraken items" do
     kraken_item = kraken_items(:one)
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "##{dom_id(kraken_item)}"
   end
@@ -66,7 +66,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     onchain_account = create_onchain_wallet_account(item: item)
     onchain_account.ensure_account_provider!(accounts(:investment))
 
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     # Without this the wallet is invisible here: its accounts carry a provider
@@ -99,7 +99,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     shared.account_shares.create!(user: member, permission: "read_only")
 
     sign_in member
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "##{dom_id(item, :accounts_index)}"
@@ -114,7 +114,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
 
   test "index renders trading212 items" do
     trading212_item = trading212_items(:configured_item)
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "##{dom_id(trading212_item)}"
   end
@@ -137,7 +137,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     ).ensure_account_provider!(inaccessible_account)
     sign_in users(:family_member)
 
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "##{dom_id(trading212_item)}"
@@ -150,7 +150,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     trading212_accounts(:main_account).ensure_account_provider!(shared_account)
     sign_in users(:family_member)
 
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "##{dom_id(trading212_items(:configured_item))}"
@@ -710,6 +710,74 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to account_url(accounts(:credit_card))
   end
 
+  test "toggle_hide_from_list toggles the flag on an account" do
+    assert_not @account.hide_from_list?
+
+    patch toggle_hide_from_list_account_url(@account)
+    assert_redirected_to accounts_path
+    @account.reload
+    assert @account.hide_from_list?
+
+    patch toggle_hide_from_list_account_url(@account)
+    assert_redirected_to accounts_path
+    @account.reload
+    assert_not @account.hide_from_list?
+  end
+
+  test "toggle_include_in_net_worth toggles the flag on an account" do
+    assert @account.include_in_net_worth?
+
+    patch toggle_include_in_net_worth_account_url(@account)
+    assert_redirected_to accounts_path
+    @account.reload
+    assert_not @account.include_in_net_worth?
+  end
+
+  test "toggle_hide_in_budget toggles the flag on an account" do
+    assert_not @account.hide_in_budget?
+
+    patch toggle_hide_in_budget_account_url(@account)
+    assert_redirected_to accounts_path
+    @account.reload
+    assert @account.hide_in_budget?
+  end
+
+  test "toggle_hide_from_list requires write permission" do
+    sign_in users(:family_member)
+
+    patch toggle_hide_from_list_account_url(accounts(:credit_card))
+    assert_redirected_to account_url(accounts(:credit_card))
+  end
+
+  test "index defaults to the type-first view" do
+    get accounts_url
+    assert_response :success
+
+    doc = Nokogiri::HTML::Document.parse(response.body)
+    segments = doc.css(".segmented-control__segment--active").map(&:text).map(&:strip)
+    assert_includes segments, "By type"
+  end
+
+  test "index type view hides hide_from_list accounts into the hidden section" do
+    @account.update!(hide_from_list: true)
+
+    get accounts_url(view: "type")
+    assert_response :success
+
+    doc = Nokogiri::HTML::Document.parse(response.body)
+    hidden_section = doc.at_xpath("//*[contains(text(), 'Hidden accounts')]")
+    assert_not_nil hidden_section, "expected a Hidden accounts section"
+
+    # The row renders only inside the hidden section, not in the type groups.
+    assert_equal 1, doc.css("turbo-frame##{dom_id(@account)}").size
+  end
+
+  test "index connections view still renders provider groups" do
+    get accounts_url(view: "connections")
+    assert_response :success
+    assert_select "#manual-accounts"
+  end
+
   test "select_provider shows available providers" do
     get select_provider_account_url(@account)
     assert_response :success
@@ -848,7 +916,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     AccountProvider.create!(account: hidden, provider: plaid_account)
 
     sign_in member
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "##{ActionView::RecordIdentifier.dom_id(item)}", count: 0
@@ -864,7 +932,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     )
 
     sign_in member
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "##{ActionView::RecordIdentifier.dom_id(item)}", count: 1
@@ -879,7 +947,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     )
 
     sign_in member
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "a[href=?]", edit_plaid_item_path(item, add_accounts: true), count: 1
@@ -894,7 +962,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     member.update!(role: :guest)
 
     sign_in member
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "a[href=?]", edit_plaid_item_path(item, add_accounts: true), count: 0
@@ -907,7 +975,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     )
 
     sign_in users(:family_member)
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "a[href=?]", edit_plaid_item_path(item, add_accounts: true), count: 0
@@ -929,7 +997,7 @@ class AccountsControllerSimplefinCtaTest < ActionDispatch::IntegrationTest
     # One manual account available
     Account.create!(family: @family, name: "Manual A", currency: "USD", balance: 0, accountable_type: "Depository", accountable: Depository.create!(subtype: "checking"))
 
-    get accounts_path
+    get accounts_path(view: "connections")
     assert_response :success
     # Expect setup link present
     assert_includes @response.body, setup_accounts_simplefin_item_path(item)
@@ -948,7 +1016,7 @@ class AccountsControllerSimplefinCtaTest < ActionDispatch::IntegrationTest
     # Also create another manual account to make manuals_exist true
     Account.create!(family: @family, name: "Manual B", currency: "USD", balance: 0, accountable_type: "Depository", accountable: Depository.create!(subtype: "checking"))
 
-    get accounts_path
+    get accounts_path(view: "connections")
     assert_response :success
     # The SimpleFin-specific relink modal is removed in favor of unified provider flow
     refute_includes @response.body, "Link existing accounts"
@@ -957,7 +1025,7 @@ class AccountsControllerSimplefinCtaTest < ActionDispatch::IntegrationTest
   test "when no SFAs exist, shows neither CTA" do
     item = SimplefinItem.create!(family: @family, name: "Conn3", access_url: "https://example.com/access")
 
-    get accounts_path
+    get accounts_path(view: "connections")
     assert_response :success
     refute_includes @response.body, setup_accounts_simplefin_item_path(item)
     refute_includes @response.body, "Link existing accounts"

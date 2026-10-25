@@ -48,28 +48,58 @@ class BalanceSheetTest < ActiveSupport::TestCase
     assert_equal 1000, BalanceSheet.new(@family).liabilities.total
   end
 
-  test "excluded accounts do not affect totals" do
+  test "accounts excluded from net worth do not affect totals" do
     create_account(balance: 1000, accountable: CreditCard.new)
     create_account(balance: 10000, accountable: Depository.new)
 
     excluded_asset = create_account(balance: 5000, accountable: Depository.new)
-    excluded_asset.update!(exclude_from_reports: true)
+    excluded_asset.update!(include_in_net_worth: false)
 
     assert_equal 10000 - 1000, BalanceSheet.new(@family).net_worth
     assert_equal 10000, BalanceSheet.new(@family).assets.total
     assert_equal 1000, BalanceSheet.new(@family).liabilities.total
   end
 
-  test "excluded accounts still have their own balance in account groups" do
-    create_account(balance: 1000, accountable: Depository.new)
+  test "reports-excluded accounts still count in net worth" do
+    # exclude_from_reports now means "hide transactions from reports" only —
+    # it must not touch balance math (that moved to include_in_net_worth).
+    create_account(balance: 1000, accountable: CreditCard.new)
+    create_account(balance: 10000, accountable: Depository.new)
+
     excluded_asset = create_account(balance: 5000, accountable: Depository.new)
     excluded_asset.update!(exclude_from_reports: true)
+
+    assert_equal 15000 - 1000, BalanceSheet.new(@family).net_worth
+    assert_equal 15000, BalanceSheet.new(@family).assets.total
+  end
+
+  test "hidden-from-list accounts still count in net worth but are unlisted" do
+    create_account(balance: 1000, accountable: CreditCard.new)
+    create_account(balance: 10000, accountable: Depository.new)
+
+    hidden_asset = create_account(balance: 5000, accountable: Depository.new)
+    hidden_asset.update!(hide_from_list: true)
+
+    sheet = BalanceSheet.new(@family)
+    assert_equal 15000 - 1000, sheet.net_worth
+    assert_equal 15000, sheet.assets.total
+
+    depository_group = sheet.assets.account_groups.find { |ag| ag.accountable_type == Depository }
+    assert_equal 15000, depository_group.total
+    assert_equal 1, depository_group.listed_accounts.size
+    assert_equal 2, depository_group.accounts.size
+  end
+
+  test "net-worth-excluded accounts still have their own balance in account groups" do
+    create_account(balance: 1000, accountable: Depository.new)
+    excluded_asset = create_account(balance: 5000, accountable: Depository.new)
+    excluded_asset.update!(include_in_net_worth: false)
 
     asset_groups = BalanceSheet.new(@family).assets.account_groups
     depository_group = asset_groups.find { |ag| ag.name == Depository.display_name }
 
     assert_equal 1000, depository_group.total
-    assert depository_group.accounts.any?(&:exclude_from_reports?)
+    assert depository_group.accounts.any? { |a| !a.include_in_net_worth? }
   end
 
   test "net worth series preserves disabled history without carrying it into current totals" do

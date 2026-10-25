@@ -61,6 +61,15 @@ module IncomeStatement::ScopedTransactionsQuery
       Transaction.pending_providers_sql(t)
     end
 
+    # The account-visibility flag this statement filters on. Report
+    # statements hide `exclude_from_reports` accounts' transactions; budget
+    # statements hide `hide_in_budget` ones. Whitelisted because it is
+    # inlined into SQL.
+    ACCOUNT_FLAG_COLUMNS = %w[exclude_from_reports hide_in_budget].freeze
+    def account_flag_column
+      @account_flag.presence_in(ACCOUNT_FLAG_COLUMNS) || "exclude_from_reports"
+    end
+
     # Tax-advantaged accounts (401k, IRA, HSA, etc.) are retirement savings,
     # not daily expenses, so they're excluded from budget calculations.
     def exclude_tax_advantaged_sql
