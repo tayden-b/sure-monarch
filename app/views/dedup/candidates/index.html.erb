@@ -1,0 +1,55 @@
+<%= content_for :page_title, t(".title") %>
+<%= content_for :page_header, render("layouts/shared/page_header",
+                                    title: t(".title"),
+                                    subtitle: t(".subtitle")) %>
+
+<div class="space-y-4">
+  <div class="bg-container rounded-xl shadow-border-xs p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <p class="text-sm text-secondary">
+      <%= t(".pairs_found", count: @summary[:total]) %>
+    </p>
+    <div class="flex items-center gap-2">
+      <%= render DS::Link.new(
+        text: t(".filters.all"),
+        variant: @confidence_filter.nil? ? "secondary" : "ghost",
+        size: "sm",
+        href: dedup_candidates_path) %>
+      <% %w[high medium low].each do |level| %>
+        <% count = @summary[:by_confidence][level.to_sym].to_i %>
+        <%= render DS::Link.new(
+          text: t(".filters.#{level}", count: count),
+          variant: @confidence_filter == level ? "secondary" : "ghost",
+          size: "sm",
+          href: dedup_candidates_path(confidence: level)) %>
+      <% end %>
+    </div>
+  </div>
+
+  <% if @candidates.any? %>
+    <% @grouped.each do |account, pairs| %>
+      <section class="bg-container rounded-xl shadow-border-xs">
+        <header class="flex items-center gap-1.5 px-4 py-3 text-xs font-medium text-secondary uppercase border-b border-divider">
+          <p><%= account.name %></p>
+          <span class="text-subdued">&middot;</span>
+          <p><%= t(".pair_count", count: pairs.size) %></p>
+        </header>
+        <ul class="divide-y divide-divider">
+          <%= render partial: "dedup/candidates/candidate", collection: pairs %>
+        </ul>
+      </section>
+    <% end %>
+
+    <% if @pagy.pages > 1 %>
+      <div class="flex justify-center">
+        <%= render "shared/pagination", pagy: @pagy %>
+      </div>
+    <% end %>
+  <% else %>
+    <div class="bg-container rounded-xl shadow-border-xs p-8">
+      <%= render DS::EmptyState.new(
+        icon: "circle-check-big",
+        title: @confidence_filter ? t(".empty_filtered") : t(".empty"),
+        description: t(".empty_description")) %>
+    </div>
+  <% end %>
+</div>

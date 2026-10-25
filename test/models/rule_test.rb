@@ -295,6 +295,163 @@ class RuleTest < ActiveSupport::TestCase
     assert_equal 0, Rule.total_affected_resource_count([])
   end
 
+  test "new rules default to the next position" do
+    first = @family.rules.create!(
+      resource_type: "transaction",
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+    second = @family.rules.create!(
+      resource_type: "transaction",
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+
+    assert_equal 1, first.position
+    assert_equal 2, second.position
+  end
+
+  test "explicit position is kept when provided" do
+    rule = @family.rules.create!(
+      resource_type: "transaction",
+      position: 42,
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+
+    assert_equal 42, rule.position
+  end
+
+  test "ordered sorts by position with id tiebreak" do
+    rule_b = @family.rules.create!(
+      resource_type: "transaction",
+      position: 2,
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+    rule_a = @family.rules.create!(
+      resource_type: "transaction",
+      position: 1,
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+
+    assert_equal [ rule_a.id, rule_b.id ], @family.rules.ordered.pluck(:id)
+  end
+
+  test "batch apply is first-match-wins per field: earlier-position rule's value survives" do
+    dining = @family.categories.create!(name: "Dining")
+    transaction_entry = create_transaction(date: Date.current, account: @account, merchant: @whole_foods_merchant)
+
+    early_rule = @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      position: 1,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [ Rule::Action.new(action_type: "set_transaction_category", value: @groceries_category.id) ]
+    )
+    late_rule = @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      position: 2,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [ Rule::Action.new(action_type: "set_transaction_category", value: dining.id) ]
+    )
+
+    ApplyAllRulesJob.perform_now(@family)
+
+    transaction_entry.reload
+    assert_equal @groceries_category, transaction_entry.transaction.category,
+      "The lower-position rule should claim the field and win"
+  end
+
+  test "non-conflicting actions from a later rule still apply to a claimed transaction" do
+    dining = @family.categories.create!(name: "Dining")
+    other_merchant = @family.merchants.create!(name: "Costco", type: "FamilyMerchant")
+    transaction_entry = create_transaction(date: Date.current, account: @account, merchant: @whole_foods_merchant)
+
+    @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      position: 1,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [ Rule::Action.new(action_type: "set_transaction_category", value: @groceries_category.id) ]
+    )
+    @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      position: 2,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [
+        Rule::Action.new(action_type: "set_transaction_category", value: dining.id),
+        Rule::Action.new(action_type: "set_transaction_merchant", value: other_merchant.id)
+      ]
+    )
+
+    ApplyAllRulesJob.perform_now(@family)
+
+    transaction_entry.reload
+    assert_equal @groceries_category, transaction_entry.transaction.category, "Conflicted field keeps the earlier rule's value"
+    assert_equal other_merchant, transaction_entry.transaction.merchant, "Non-conflicting action from the later rule still applies"
+  end
+
+  test "later rule wins the field after reordering" do
+    dining = @family.categories.create!(name: "Dining")
+    transaction_entry = create_transaction(date: Date.current, account: @account, merchant: @whole_foods_merchant)
+
+    rule_a = @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [ Rule::Action.new(action_type: "set_transaction_category", value: @groceries_category.id) ]
+    )
+    rule_b = @family.rules.create!(
+      resource_type: "transaction",
+      effective_date: 1.day.ago.to_date,
+      conditions: [ Rule::Condition.new(condition_type: "transaction_merchant", operator: "=", value: @whole_foods_merchant.id) ],
+      actions: [ Rule::Action.new(action_type: "set_transaction_category", value: dining.id) ]
+    )
+
+    Rule.reorder!(@family, [ rule_b.id, rule_a.id ])
+    ApplyAllRulesJob.perform_now(@family)
+
+    transaction_entry.reload
+    assert_equal dining, transaction_entry.transaction.category, "After reorder, the new first rule should win"
+  end
+
+  test "move swaps a rule with its neighbor" do
+    rules = 3.times.map do |i|
+      @family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    assert rules[1].move("up")
+    assert_equal [ rules[1].id, rules[0].id, rules[2].id ], @family.rules.ordered.pluck(:id)
+    assert_equal [ 1, 2, 3 ], @family.rules.ordered.pluck(:position)
+  end
+
+  test "move returns false at the list boundaries" do
+    rules = 2.times.map do
+      @family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    assert_not rules.first.move("up")
+    assert_not rules.last.move("down")
+  end
+
+  test "reorder! appends rules not present in the list" do
+    rules = 3.times.map do
+      @family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    Rule.reorder!(@family, [ rules[2].id ])
+
+    assert_equal [ rules[2].id, rules[0].id, rules[1].id ], @family.rules.ordered.pluck(:id)
+  end
+
   test "rule matching on transaction account" do
     # Create a second account
     other_account = @family.accounts.create!(

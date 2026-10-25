@@ -288,6 +288,7 @@ class Import < ApplicationRecord
     family.sync_later
 
     update! status: :complete
+    log_dedup_candidates
   rescue => error
     update! status: :failed, error: error.message
   end
@@ -545,6 +546,26 @@ class Import < ApplicationRecord
     # not create, and destroying its own entries does not unwind that. Runs
     # inside revert's transaction, so a failure here rolls the whole revert back.
     def revert_derived_state!
+    end
+
+    # After a successful publish, record how many cross-source duplicate
+    # candidate pairs the import likely introduced — CSV/re-imports are the
+    # classic source of them — so support output points at the review queue.
+    # Deliberately non-fatal: the scan must never fail a committed import.
+    def log_dedup_candidates
+      count = Dedup::Scanner.new(family: family).candidates.size
+      return if count.zero?
+
+      DebugLogEntry.capture(
+        category: "provider_sync",
+        level: "info",
+        message: "Import left #{count} duplicate candidate pair(s) for review",
+        source: self.class.name,
+        family: family,
+        metadata: { record_type: type, record_id: id, dedup_candidates: count, review_path: "/dedup/candidates" }
+      )
+    rescue => e
+      Rails.logger.warn("Dedup scan after import #{id} failed: #{e.class}: #{e.message}")
     end
 
     # Where the record lands once its data is gone. Most imports return to

@@ -1,0 +1,44 @@
+en:
+  dedup:
+    candidates:
+      shared:
+        invalid_pair: "That pair could not be found or is no longer mergeable."
+      index:
+        title: "Duplicate review"
+        subtitle: "Likely duplicate transactions across your accounts and import sources. Merge to keep one row, or dismiss pairs that are genuinely separate charges."
+        pairs_found:
+          one: "%{count} candidate pair"
+          other: "%{count} candidate pairs"
+        pair_count:
+          one: "%{count} pair"
+          other: "%{count} pairs"
+        filters:
+          all: "All"
+          high: "High (%{count})"
+          medium: "Medium (%{count})"
+          low: "Low (%{count})"
+        empty: "No duplicate candidates"
+        empty_filtered: "No candidates at this confidence"
+        empty_description: "New candidates appear here after an import or provider sync delivers a transaction your ledger already holds."
+      merge:
+        merged: "Merged into \"%{name}\"."
+        merge_failed: "That pair could not be merged."
+      dismiss:
+        dismissed: "Pair dismissed — it won't be suggested again."
+      candidate:
+        keep: "Keep"
+        drop: "Remove"
+        merge: "Merge"
+        merge_confirm: "Keep \"%{keep}\" and remove \"%{drop}\"?"
+        not_duplicate: "Not a duplicate"
+        manual_source: "manual"
+        same_account: "Same account"
+        cross_account: "Cross-account"
+        days_apart:
+          one: "%{count} day apart"
+          other: "%{count} days apart"
+        needs_review: "needs review"
+        confidence:
+          high: "High confidence"
+          medium: "Medium"
+          low: "Low"

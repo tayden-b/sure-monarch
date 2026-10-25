@@ -235,6 +235,18 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal mapping_for("tags", "tag-reimb").record_id.to_s, tags_action.value
   end
 
+  test "rules carry Monarch order into position" do
+    run_import
+
+    assert_equal 0, mapping_for("rules", "rule-1").record.position
+    assert_equal 1, mapping_for("rules", "rule-2").record.position
+    assert_equal 2, mapping_for("rules", "rule-3").record.position
+
+    ordered = @family.rules.where(id: MonarchSourceMapping.where(family: @family, collection: "rules").select(:record_id)).ordered
+    assert_equal %w[rule-1 rule-2 rule-3],
+      ordered.map { |r| MonarchSourceMapping.find_by(family: @family, collection: "rules", record: r).monarch_id }
+  end
+
   test "recurring streams map frequency and sign" do
     run_import
 
@@ -296,6 +308,35 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert import.dry_run
     assert import.complete?
     assert_equal 8, import.report["collections"]["transactions"]["created"]
+  end
+
+  test "archive rows already merged into a provider entry are skipped, not resurrected" do
+    # Simulate a prior dedup merge: the plaid winner absorbed monarch row
+    # txn-1 and recorded its external_id in extra.manual_merge.
+    winner = accounts(:depository).entries.create!(
+      name: "SURVIVOR", date: Date.current, amount: 10.00, currency: "USD",
+      source: "plaid", external_id: "plaid-1",
+      entryable: Transaction.new(
+        kind: "standard",
+        extra: {
+          "manual_merge" => [ {
+            "merged_from_entry_id" => SecureRandom.uuid,
+            "merged_from_external_id" => "txn-1",
+            "merged_at" => Time.current.iso8601,
+            "source" => "monarch",
+            "via" => "dedup"
+          } ]
+        }
+      )
+    )
+
+    import = run_import
+
+    assert import.complete?
+    report = import.report["collections"]
+    assert_equal 7, report["transactions"]["created"]
+    assert_equal 1, report["transactions"]["skipped"]["merged_duplicate"]
+    assert_not Entry.exists?(source: "monarch", external_id: "txn-1")
   end
 
   test "revert removes everything the import created" do

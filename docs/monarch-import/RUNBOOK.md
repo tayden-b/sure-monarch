@@ -82,7 +82,41 @@ unexpected failure aborts the whole import.
    show `created` = 0 and `updated` = the counts. Idempotency is keyed on
    `monarch_source_mappings` (family, collection, monarch_id).
 
-## 5. Reverting
+## 5. Duplicate review (cross-source dedup)
+
+After the real import finishes it prints a duplicate-candidate count. The
+Plaid feed will re-deliver the last ~730 days of the same transactions, and
+re-running `monarch:import` on a fresher export can double rows the feed
+already delivered — `Dedup::Scanner` finds those pairs across sources and
+accounts (`source=monarch` vs `source=plaid` for the same charge).
+
+```sh
+docker compose -f .devcontainer/docker-compose.yml exec app \
+  bin/rails monarch:dedup
+```
+
+Prints candidate counts per account and confidence. Optional env vars:
+`ACCOUNT_ID` (one account only), `DATE_WINDOW=5` (default ±3 days),
+`LIMIT=500` (default 200), `INCLUDE_DISMISSED=1`.
+
+Review and merge in the UI: start the app (`bin/dev`), sign in, open
+**http://localhost:3000/dedup/candidates**.
+
+- Candidates are grouped by the surviving account and scored
+  high/medium/low (name similarity, date gap, same/cross account,
+  same/different source).
+- **Merge** keeps the provider-backed row (plaid/coinbase/… over
+  `source=monarch`, and pending rows always lose), absorbs the loser's
+  category/merchant/notes/tags where the winner lacks them, clears
+  `needs_review`, and records the merge in
+  `transactions.extra["manual_merge"]` — the same marker provider syncs
+  and `monarch:import` read so the removed row is never re-created
+  (skipped as `merged_duplicate`).
+- **Not a duplicate** persists a `Dedup::Dismissal` keyed on the pair's
+  stable `source:external_id`s — the pair never resurfaces, even across
+  re-imports that recreate the rows.
+
+## 6. Reverting
 
 ```sh
 docker compose -f .devcontainer/docker-compose.yml exec app \
