@@ -37,11 +37,11 @@ provenance; T4 after T2's rule-executor edit; T6/T7 after T1).
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
 | T1 Category classification + groups (swe-2-max) | [a9625182](https://app.devin.ai/sessions/a962518265df4a33a0520b287724f121) | — | running | — |
-| T9 Accounts flags + type-first grouping (swe-2-max) | [16248e1e](https://app.devin.ai/sessions/16248e1e62994260ad45b6d12970a66f) | — | running | — |
-| T2 Needs-review queue (swe-2-max) | [0dd05265](https://app.devin.ai/sessions/0dd052659b2f466185238c125c67113d) | — | running | — |
-| T5 Aggregate holdings + allocation (swe-2-max) | [f70e472b](https://app.devin.ai/sessions/f70e472bb5c448a0b0e9cbbdb6d6ada0) | — | running | — |
+| T9 Accounts flags + type-first grouping (swe-2-max) | [16248e1e](https://app.devin.ai/sessions/16248e1e62994260ad45b6d12970a66f) | [#9](https://github.com/tayden-b/sure-monarch/pull/9) | in review — round-1 correction sent (system tests must use `view=connections`) | — |
+| T2 Needs-review queue (swe-2-max) | [0dd05265](https://app.devin.ai/sessions/0dd052659b2f466185238c125c67113d) | [#10](https://github.com/tayden-b/sure-monarch/pull/10) | in review — diff passed, CI pending | — |
+| T5 Aggregate holdings + allocation (swe-2-max) | [f70e472b](https://app.devin.ai/sessions/f70e472bb5c448a0b0e9cbbdb6d6ada0) | [#7](https://github.com/tayden-b/sure-monarch/pull/7) | **merged** | 64cab29f |
 | T8 Mobile transactions UX (swe-2-max) | [182aa65f](https://app.devin.ai/sessions/182aa65ff25441e5b9fe7a2b13bc0636) | — | running | — |
-| T10 Recurring polish (swe-2-high) | [0eb00f24](https://app.devin.ai/sessions/0eb00f24c7eb42639ec273b6daa0b468) | — | running | — |
+| T10 Recurring polish (swe-2-high) | [0eb00f24](https://app.devin.ai/sessions/0eb00f24c7eb42639ec273b6daa0b468) | [#8](https://github.com/tayden-b/sure-monarch/pull/8) | **merged** | 8c9df482 |
 | T3 Cross-source dedup | — | — | queued (needs T2) | — |
 | T4 Rule ordering | — | — | queued (needs T2) | — |
 | T6 Merchant spend report | — | — | queued (needs T1) | — |
@@ -60,10 +60,14 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   Tayden after he creates dashboard keys (docs/setup/PLAID.md step 2).
 - Webhooks need Funnel permanently on for real-time pushes; manual Sync is the
   documented alternative if he doesn't want the app public 24/7.
-- Importer defers: `needsReview`/`reviewStatus` UI filtering (stored in
-  `extra.monarch` only), rule ordering (in names only), group-scoped/future
+- Importer defers: rule ordering (in names only), group-scoped/future
   budget rows, daily recurring frequencies, cash-position splitting inside
-  investment accounts.
+  investment accounts. (`needsReview`/`reviewStatus` UI filtering landed via
+  T2's review queue.)
+- T10 follow-up: `Demo::Generator#create_transfer!` writes legs with
+  `kind: "standard"` — harmless to recurring detection now (T10 fixed the
+  identifier to filter by transfers membership) but leaks into other
+  kind-filtered surfaces (budgets, uncategorized). Candidate cleanup task.
 - Gemini has no provider — manual/CSV account path documented.
 - Pre-existing test-env failures on baseline (eval/langfuse, simplefin ×3,
   hostings ×2, PG advisory-lock flake) reproduce without any changes — not
