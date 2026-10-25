@@ -1,9 +1,9 @@
 name: LLM Evals
 
+# Manual-only on this fork: evals run on upstream release tags and need an
+# OpenAI token; not part of this fork's CI.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read

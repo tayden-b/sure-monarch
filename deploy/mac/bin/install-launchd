@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/install-launchd — start Sure at login + nightly backups (macOS launchd)
+#
+#   ./bin/install-launchd            # install both agents
+#   ./bin/install-launchd --uninstall
+#
+# Installs into ~/Library/LaunchAgents:
+#   com.sure-mac.stack   → docker compose up -d at login
+#   com.sure-mac.backup  → ./bin/backup every night at 03:15
+#
+# Requires Docker Desktop set to start at login:
+#   Docker Desktop → Settings → General → "Start Docker Desktop when you sign in"
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LA_DIR="$HOME/Library/LaunchAgents"
+mkdir -p "$LA_DIR" "$KIT_DIR/log"
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+[ "$(uname -s)" = "Darwin" ] || die "launchd is macOS-only — this machine is $(uname -s)"
+
+PLISTS="com.sure-mac.stack com.sure-mac.backup"
+
+if [ "${1:-}" = "--uninstall" ]; then
+  for label in $PLISTS; do
+    target="$LA_DIR/${label}.plist"
+    if [ -f "$target" ]; then
+      launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null \
+        || launchctl unload "$target" 2>/dev/null || true
+      rm -f "$target"
+      say "removed $label"
+    fi
+  done
+  say "Uninstalled."
+  exit 0
+fi
+
+for label in $PLISTS; do
+  src="$KIT_DIR/launchd/${label}.plist"
+  target="$LA_DIR/${label}.plist"
+  [ -f "$src" ] || die "missing $src"
+
+  sed "s|@KIT_DIR@|$KIT_DIR|g" "$src" > "$target"
+  plutil -lint "$target" >/dev/null
+
+  # Reload if already installed
+  launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+  if ! launchctl bootstrap "gui/$(id -u)" "$target" 2>/dev/null; then
+    # Fall back for older macOS
+    launchctl unload "$target" 2>/dev/null || true
+    launchctl load -w "$target"
+  fi
+  say "installed $label"
+done
+
+say ""
+say "Done. Verify with:"
+say "  launchctl print gui/$(id -u)/com.sure-mac.stack"
+say "  launchctl print gui/$(id -u)/com.sure-mac.backup"
+say "Logs: $KIT_DIR/log/"

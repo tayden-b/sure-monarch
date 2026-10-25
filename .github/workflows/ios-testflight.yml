@@ -1,5 +1,7 @@
 name: iOS TestFlight
 
+# Manual-only on this fork: no iOS app is released from a personal self-hosted
+# deployment. Still callable from mobile-release.yml when run manually.
 on:
   workflow_dispatch:
     inputs:
@@ -13,9 +15,6 @@ on:
         description: "TestFlight release notes"
         required: false
         type: string
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read
