@@ -1,0 +1,34 @@
+[
+  {
+    "id": "goal-1",
+    "name": "House Down Payment",
+    "defaultName": "House Down Payment",
+    "targetAmount": 50000.0,
+    "currentAmount": 12000.0,
+    "startingAmount": null,
+    "plannedMonthlyContribution": null,
+    "plannedMonthlyPretaxContribution": null,
+    "estimatedCompletionMonth": null,
+    "archivedAt": null,
+    "completedAt": null,
+    "completionPercent": 24.0,
+    "type": "savings",
+    "objective": "savings",
+    "priority": 1,
+    "imageStorageProvider": "s3",
+    "imageStorageProviderId": "img-1",
+    "accountAllocations": [
+      {
+        "id": "alloc-1",
+        "amount": null,
+        "currentAmount": 12000.0,
+        "useEntireAccountBalance": true,
+        "account": { "id": "acc-savings", "displayName": "Emergency Savings", "currentBalance": 12000.0, "isAsset": true, "type": { "name": "depository", "display": "Savings" }, "subtype": { "name": "savings", "display": "Savings" } }
+      }
+    ],
+    "eligibleAccounts": [],
+    "suggestedAccounts": [],
+    "monthlyContributionSummaries": [],
+    "plannedContributions": []
+  }
+]

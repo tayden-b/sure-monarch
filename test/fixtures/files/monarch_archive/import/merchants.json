@@ -1,0 +1,5 @@
+[
+  { "id": "mer-grocery", "name": "Grocery Mart", "logoUrl": "https://cdn.example.com/grocery.png", "createdAt": "2024-01-01T00:00:00Z", "canBeDeleted": true, "defaultCategory": null, "defaultCategoryApplicationMode": "none", "hasActiveRecurringStreams": false, "ruleCount": 1, "transactionCount": 4 },
+  { "id": "mer-stream", "name": "Streamflix", "logoUrl": "https://cdn.example.com/streamflix.png", "createdAt": "2024-01-01T00:00:00Z", "canBeDeleted": true, "defaultCategory": null, "defaultCategoryApplicationMode": "none", "hasActiveRecurringStreams": true, "ruleCount": 0, "transactionCount": 12 },
+  { "id": "mer-employer", "name": "Acme Corp Payroll", "logoUrl": null, "createdAt": "2024-01-01T00:00:00Z", "canBeDeleted": true, "defaultCategory": null, "defaultCategoryApplicationMode": "none", "hasActiveRecurringStreams": true, "ruleCount": 0, "transactionCount": 24 }
+]

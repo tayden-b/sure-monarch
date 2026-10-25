@@ -1,0 +1,6 @@
+[
+  { "entity_id": "cat-groceries", "month": "2026-09", "scope": "category", "plannedCashFlowAmount": 600.0, "plannedSetAsideAmount": 0.0, "actualAmount": -84.32, "cumulativeActualAmount": -84.32, "remainingAmount": 515.68, "previousMonthRolloverAmount": null, "rolloverType": null, "rolloverTargetAmount": null },
+  { "entity_id": "cat-dining", "month": "2026-09", "scope": "category", "plannedCashFlowAmount": 200.0, "plannedSetAsideAmount": 0.0, "actualAmount": -25.0, "cumulativeActualAmount": -25.0, "remainingAmount": 175.0, "previousMonthRolloverAmount": null, "rolloverType": null, "rolloverTargetAmount": null },
+  { "entity_id": "cg-expense", "month": "2026-09", "scope": "group", "plannedCashFlowAmount": 800.0, "plannedSetAsideAmount": 0.0, "actualAmount": -109.32, "cumulativeActualAmount": -109.32, "remainingAmount": 690.68, "previousMonthRolloverAmount": null, "rolloverType": null, "rolloverTargetAmount": null },
+  { "entity_id": "cat-groceries", "month": "2030-01", "scope": "category", "plannedCashFlowAmount": 600.0, "plannedSetAsideAmount": 0.0, "actualAmount": 0.0, "cumulativeActualAmount": 0.0, "remainingAmount": 600.0, "previousMonthRolloverAmount": null, "rolloverType": null, "rolloverTargetAmount": null }
+]

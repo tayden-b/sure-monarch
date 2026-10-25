@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_25_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -1593,7 +1593,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
     t.jsonb "variable_rate_schedule", default: {}, null: false
     t.check_constraint "down_payment IS NULL OR down_payment >= 0::numeric", name: "chk_loans_down_payment_non_negative"
     t.check_constraint "insurance_rate IS NULL OR insurance_rate >= 0::numeric", name: "chk_loans_insurance_rate_non_negative"
-    t.check_constraint "insurance_rate_type IS NULL OR (insurance_rate_type::text = ANY (ARRAY['level_term'::character varying, 'decreasing_life'::character varying]::text[]))", name: "chk_loans_insurance_rate_type"
+    t.check_constraint "insurance_rate_type IS NULL OR (insurance_rate_type::text = ANY (ARRAY['level_term'::character varying::text, 'decreasing_life'::character varying::text]))", name: "chk_loans_insurance_rate_type"
   end
 
   create_table "lunchflow_accounts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1723,6 +1723,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
     t.uuid "user_id", null: false
     t.index ["user_id", "device_id"], name: "index_mobile_devices_on_user_id_and_device_id", unique: true
     t.index ["user_id"], name: "index_mobile_devices_on_user_id"
+  end
+
+  create_table "monarch_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "archive_name"
+    t.datetime "created_at", null: false
+    t.boolean "dry_run", default: false, null: false
+    t.text "error"
+    t.uuid "family_id", null: false
+    t.jsonb "reference_documents"
+    t.jsonb "report"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id"], name: "index_monarch_imports_on_family_id"
+  end
+
+  create_table "monarch_source_mappings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "collection", null: false
+    t.datetime "created_at", null: false
+    t.uuid "family_id", null: false
+    t.string "monarch_id", null: false
+    t.jsonb "payload"
+    t.uuid "record_id", null: false
+    t.string "record_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id", "collection", "monarch_id"], name: "idx_monarch_source_mappings_unique", unique: true
+    t.index ["family_id"], name: "index_monarch_source_mappings_on_family_id"
+    t.index ["record_type", "record_id"], name: "idx_monarch_source_mappings_record"
   end
 
   create_table "monobank_accounts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -3034,6 +3061,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_120000) do
   add_foreign_key "mercury_items", "families"
   add_foreign_key "messages", "chats"
   add_foreign_key "mobile_devices", "users"
+  add_foreign_key "monarch_imports", "families"
+  add_foreign_key "monarch_source_mappings", "families"
   add_foreign_key "monobank_accounts", "monobank_items"
   add_foreign_key "monobank_items", "families"
   add_foreign_key "notification_deliveries", "rules", on_delete: :cascade

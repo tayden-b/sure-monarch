@@ -1,0 +1,4 @@
+[
+  { "transaction_id": "txn-1", "tag_id": "tag-vacay" },
+  { "transaction_id": "txn-2", "tag_id": "tag-reimb" }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "month": "2026-09",
+    "totalExpenses": { "plannedAmount": 800.0, "actualAmount": -109.32, "previousMonthRolloverAmount": 0.0, "remainingAmount": 690.68 },
+    "totalIncome": { "plannedAmount": 2450.0, "actualAmount": 2450.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 },
+    "totalFixedExpenses": { "plannedAmount": 0.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 },
+    "totalFlexibleExpenses": { "plannedAmount": 800.0, "actualAmount": -109.32, "previousMonthRolloverAmount": 0.0, "remainingAmount": 690.68 },
+    "totalNonMonthlyExpenses": { "plannedAmount": 0.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 }
+  },
+  {
+    "month": "2030-01",
+    "totalExpenses": { "plannedAmount": 900.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 900.0 },
+    "totalIncome": { "plannedAmount": 2500.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 },
+    "totalFixedExpenses": { "plannedAmount": 0.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 },
+    "totalFlexibleExpenses": { "plannedAmount": 900.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 900.0 },
+    "totalNonMonthlyExpenses": { "plannedAmount": 0.0, "actualAmount": 0.0, "previousMonthRolloverAmount": 0.0, "remainingAmount": 0.0 }
+  }
+]

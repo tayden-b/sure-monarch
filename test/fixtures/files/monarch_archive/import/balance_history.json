@@ -1,0 +1,9 @@
+[
+  { "__typename": "BalanceHistory", "account_id": "acc-checking", "date": "2026-09-01", "signedBalance": 5000.0 },
+  { "__typename": "BalanceHistory", "account_id": "acc-checking", "date": "2026-09-15", "signedBalance": 4100.0 },
+  { "__typename": "BalanceHistory", "account_id": "acc-checking", "date": "2026-09-30", "signedBalance": 5230.5 },
+  { "__typename": "BalanceHistory", "account_id": "acc-savings", "date": "2026-09-01", "signedBalance": 12000.0 },
+  { "__typename": "BalanceHistory", "account_id": "acc-credit", "date": "2026-09-01", "signedBalance": -1800.0 },
+  { "__typename": "BalanceHistory", "account_id": "acc-credit", "date": "2026-09-30", "signedBalance": -1450.75 },
+  { "__typename": "BalanceHistory", "account_id": "acc-brokerage", "date": "2026-09-30", "signedBalance": 25000.0 }
+]

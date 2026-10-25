@@ -1,0 +1,4 @@
+[
+  { "id": "tag-reimb", "name": "reimbursable", "color": "#e99537", "order": 1, "transactionCount": 2 },
+  { "id": "tag-vacay", "name": "vacation", "color": "#61c9ea", "order": 2, "transactionCount": 1 }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "__typename": "CategoryGroup",
+    "id": "cg-expense",
+    "name": "Everyday Expenses",
+    "type": "expense",
+    "order": 1,
+    "color": "#4da568",
+    "groupLevelBudgetingEnabled": false,
+    "categories": [ { "id": "cat-groceries" }, { "id": "cat-dining" }, { "id": "cat-gas" } ]
+  },
+  {
+    "__typename": "CategoryGroup",
+    "id": "cg-income",
+    "name": "Income",
+    "type": "income",
+    "order": 2,
+    "color": null,
+    "groupLevelBudgetingEnabled": false,
+    "categories": [ { "id": "cat-paychecks" }, { "id": "cat-interest" } ]
+  },
+  {
+    "__typename": "CategoryGroup",
+    "id": "cg-transfer",
+    "name": "Transfers",
+    "type": "transfer",
+    "order": 3,
+    "color": "#6471eb",
+    "groupLevelBudgetingEnabled": false,
+    "categories": [ { "id": "cat-transfer" }, { "id": "cat-ccpayment" } ]
+  }
+]
