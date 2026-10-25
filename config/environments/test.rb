@@ -5,6 +5,15 @@ require "active_support/core_ext/integer/time"
 # your test database is "scratch space" for the test suite and is wiped
 # and recreated between test runs. Don't rely on the data there!
 
+# Explicit test-only encryption keys. Models gate their `encrypts`
+# declarations behind `encryption_ready?`, which requires an explicit
+# configuration (env vars or credentials) — runtime config alone does not
+# count. Setting the env vars here, before initializers and eager loading,
+# makes encrypted attributes (and fixture encryption) work under test.
+ENV["ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY"] ||= "test"
+ENV["ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY"] ||= "test"
+ENV["ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT"] ||= "test"
+
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
