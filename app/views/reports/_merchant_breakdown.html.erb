@@ -1,0 +1,44 @@
+<%# Top merchants by spend for the selected period. Locals: merchants (ranked
+    rows, already capped), merchants_total (spend across ALL merchants — the
+    percentage denominator), merchants_count, start_date, end_date %>
+<% if merchants.any? %>
+  <div class="text-large mb-4 flex items-center gap-2 text-lg">
+    <%= icon("trending-down", class: "w-5 h-5") %>
+    <span><%= t("reports.merchant_breakdown.table.heading") %>:</span>
+    <span class="font-medium text-primary privacy-sensitive"> <%= Money.new(merchants_total, Current.family.currency).format %></span>
+  </div>
+
+  <div class="bg-container-inset rounded-xl p-1 overflow-x-auto">
+    <div class="rounded-lg shadow-border-xs bg-container overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-container-inset">
+          <tr class="uppercase text-xs font-medium text-secondary">
+            <th class="px-4 py-2 text-left font-medium"><%= t("reports.merchant_breakdown.table.merchant") %></th>
+            <th class="px-4 py-2 text-right font-medium"><%= t("reports.transactions_breakdown.table.amount") %></th>
+            <th class="px-4 py-2 text-right font-medium"><%= t("reports.transactions_breakdown.table.percentage") %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% merchants.each_with_index do |merchant, idx| %>
+            <%= render "reports/merchant_row",
+              merchant: merchant,
+              total: merchants_total,
+              start_date: start_date,
+              end_date: end_date,
+              show_border: idx < merchants.size - 1 %>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <% if merchants.size < merchants_count %>
+    <div class="mt-4 text-xs text-subdued">
+      <%= t("reports.merchant_breakdown.showing", shown: merchants.size, total: merchants_count) %>
+    </div>
+  <% end %>
+<% else %>
+  <div class="text-center py-8 text-subdued">
+    <%= t("reports.merchant_breakdown.no_transactions") %>
+  </div>
+<% end %>
