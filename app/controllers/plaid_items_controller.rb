@@ -9,11 +9,10 @@ class PlaidItemsController < ApplicationController
 
   def new
     region = params[:region] == "eu" ? :eu : :us
-    webhooks_url = region == :eu ? plaid_eu_webhooks_url : plaid_us_webhooks_url
 
     @link_token = Current.family.get_link_token(
-      webhooks_url: webhooks_url,
-      redirect_url: accounts_url,
+      webhooks_url: plaid_webhooks_url(region),
+      redirect_url: plaid_redirect_url,
       accountable_type: params[:accountable_type] || "Depository",
       region: region
     )
@@ -22,11 +21,9 @@ class PlaidItemsController < ApplicationController
   end
 
   def edit
-    webhooks_url = @plaid_item.plaid_region == "eu" ? plaid_eu_webhooks_url : plaid_us_webhooks_url
-
     @link_token = @plaid_item.get_update_link_token(
-      webhooks_url: webhooks_url,
-      redirect_url: accounts_url,
+      webhooks_url: plaid_webhooks_url(@plaid_item.plaid_region),
+      redirect_url: plaid_redirect_url,
       account_selection_enabled: @plaid_item.us? && params[:add_accounts] == "true",
     )
   rescue Plaid::ApiError => e
@@ -177,15 +174,21 @@ class PlaidItemsController < ApplicationController
       end
     end
 
-    def plaid_us_webhooks_url
-      return webhooks_plaid_url if Rails.env.production?
-
-      ENV.fetch("DEV_WEBHOOKS_URL", root_url.chomp("/")) + "/webhooks/plaid"
+    def plaid_redirect_url
+      Provider::Plaid.redirect_uri(fallback: request.base_url)
     end
 
-    def plaid_eu_webhooks_url
-      return webhooks_plaid_eu_url if Rails.env.production?
+    def plaid_webhooks_url(region)
+      Provider::Plaid.webhook_url(region: region, fallback: default_webhooks_base_url)
+    end
 
-      ENV.fetch("DEV_WEBHOOKS_URL", root_url.chomp("/")) + "/webhooks/plaid_eu"
+    # Request-derived base for webhooks when no env override exists. In
+    # production the host Plaid sees is whatever public address served this
+    # request; in development it's the DEV_WEBHOOKS_URL tunnel (e.g. ngrok)
+    # or root_url.
+    def default_webhooks_base_url
+      return request.base_url if Rails.env.production?
+
+      ENV.fetch("DEV_WEBHOOKS_URL", root_url.chomp("/"))
     end
 end

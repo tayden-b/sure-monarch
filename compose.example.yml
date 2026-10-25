@@ -77,6 +77,24 @@ x-rails-env: &rails_env
   # is what happens with a local model. See compose.example.ai.yml.
   AI_RESPONSE_TIMEOUT: ${AI_RESPONSE_TIMEOUT:-90}
   ASSISTANT_MAX_TOOL_CALL_ITERATIONS: ${ASSISTANT_MAX_TOOL_CALL_ITERATIONS:-}
+  # Plaid bank connections — full self-hosted checklist in docs/setup/PLAID.md.
+  # PLAID_ENV=sandbox works with free Sandbox keys; use production only after
+  # Plaid approves Limited/Full Production access.
+  PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+  PLAID_SECRET: ${PLAID_SECRET:-}
+  PLAID_ENV: ${PLAID_ENV:-sandbox}
+  # Days of history to backfill on first link (Plaid max: 730). Blank = 730.
+  PLAID_HISTORY_DAYS: ${PLAID_HISTORY_DAYS:-}
+  # Public origin where Plaid can reach this instance, e.g. the Tailscale
+  # Funnel URL (https://<mac>.<tailnet>.ts.net). Builds the default redirect
+  # URI and webhook URL. APP_DOMAIN is an older name for the same thing.
+  APP_HOST: ${APP_HOST:-}
+  APP_DOMAIN: ${APP_DOMAIN:-}
+  # Exact overrides when the derived URLs don't match your routing. Both must
+  # be allowlisted in the Plaid dashboard (Developers > API).
+  PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+  PLAID_WEBHOOK_URL: ${PLAID_WEBHOOK_URL:-}
+  PLAID_EU_WEBHOOK_URL: ${PLAID_EU_WEBHOOK_URL:-}
 
 services:
   web:
