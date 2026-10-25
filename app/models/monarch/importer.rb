@@ -120,6 +120,31 @@ class Monarch::Importer
   end
 
   private
+    # Monarch external_ids this family already merged away via Dedup::Merger
+    # (or a pending-merge). Read once per import; the survivors record them in
+    # transactions.extra["manual_merge"]. Same read pattern the provider sync
+    # engines use.
+    def merged_away_monarch_ids
+      sql = <<~SQL
+        SELECT mj.value ->> 'merged_from_external_id' AS external_id
+        FROM entries
+        INNER JOIN accounts ON accounts.id = entries.account_id
+        INNER JOIN transactions ON transactions.id = entries.entryable_id
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE WHEN jsonb_typeof(transactions.extra -> 'manual_merge') = 'array'
+               THEN transactions.extra -> 'manual_merge'
+               ELSE '[]'::jsonb
+          END
+        ) AS mj (value)
+        WHERE accounts.family_id = :family_id
+          AND entries.entryable_type = 'Transaction'
+          AND jsonb_typeof(mj.value) = 'object'
+          AND mj.value ->> 'merged_from_external_id' IS NOT NULL
+      SQL
+      bound = ApplicationRecord.sanitize_sql([ sql, { family_id: family.id } ])
+      Set.new(ApplicationRecord.connection.select_values(bound).map(&:to_s))
+    end
+
     # ---------------------------------------------------------------- mapping
 
     def mapped_record_id(collection, monarch_id)
@@ -391,8 +416,17 @@ class Monarch::Importer
       report.archive_count("transaction_tags", tag_links.size)
       tags_by_txn = tag_links.group_by { |l| l["transaction_id"] }
       linked_txns = Set.new
+      merged_away_ids = merged_away_monarch_ids
 
       each_record("transactions") do |r|
+        # A Monarch row the user already merged into a provider-backed entry
+        # must not be resurrected by a re-import — the winner recorded the
+        # loser's external_id in transactions.extra["manual_merge"].
+        if merged_away_ids.include?(r["id"].to_s)
+          report.skipped("transactions", "merged_duplicate")
+          next
+        end
+
         account_id = mapped_record_id("accounts", r.dig("account", "id"))
         account = account_id && family.accounts.find_by(id: account_id)
         unless account

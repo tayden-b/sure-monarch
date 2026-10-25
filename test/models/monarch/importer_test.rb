@@ -257,6 +257,35 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal 8, import.report["collections"]["transactions"]["created"]
   end
 
+  test "archive rows already merged into a provider entry are skipped, not resurrected" do
+    # Simulate a prior dedup merge: the plaid winner absorbed monarch row
+    # txn-1 and recorded its external_id in extra.manual_merge.
+    winner = accounts(:depository).entries.create!(
+      name: "SURVIVOR", date: Date.current, amount: 10.00, currency: "USD",
+      source: "plaid", external_id: "plaid-1",
+      entryable: Transaction.new(
+        kind: "standard",
+        extra: {
+          "manual_merge" => [ {
+            "merged_from_entry_id" => SecureRandom.uuid,
+            "merged_from_external_id" => "txn-1",
+            "merged_at" => Time.current.iso8601,
+            "source" => "monarch",
+            "via" => "dedup"
+          } ]
+        }
+      )
+    )
+
+    import = run_import
+
+    assert import.complete?
+    report = import.report["collections"]
+    assert_equal 7, report["transactions"]["created"]
+    assert_equal 1, report["transactions"]["skipped"]["merged_duplicate"]
+    assert_not Entry.exists?(source: "monarch", external_id: "txn-1")
+  end
+
   test "revert removes everything the import created" do
     run_import
     Monarch::Reverter.new(family: @family, io: File.open(File::NULL, "w")).run
