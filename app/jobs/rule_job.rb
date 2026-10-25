@@ -1,7 +1,10 @@
 class RuleJob < ApplicationJob
   queue_as :medium_priority
 
-  def perform(rule, ignore_attribute_locks: false, execution_type: "manual")
+  # `claimed_fields` is only usable via perform_now (an in-memory Hash of
+  # Sets is not serializable): batch applies share one tracker across rules
+  # so first-match-wins holds within a run. See Rule#apply.
+  def perform(rule, ignore_attribute_locks: false, execution_type: "manual", claimed_fields: nil)
     executed_at = Time.current
     transactions_queued = 0
     transactions_processed = 0
@@ -31,7 +34,7 @@ class RuleJob < ApplicationJob
       )
 
       # Apply the rule and get the result
-      result = rule.apply(ignore_attribute_locks: ignore_attribute_locks, rule_run: rule_run)
+      result = rule.apply(ignore_attribute_locks: ignore_attribute_locks, rule_run: rule_run, claimed_fields: claimed_fields)
 
       if result.is_a?(Hash) && result[:async]
         # Async actions were executed

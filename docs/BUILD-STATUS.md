@@ -33,7 +33,7 @@ Batch 1 = 6 parallel workers on non-overlapping file sets; batch 2
 (T3 dedup, T4 rule ordering, T6 merchant report, T7 flex budget) follows
 once batch-1 dependencies land (T3 needs needs-review + importer
 provenance; T4 after T2's rule-executor edit; T6/T7 after T1). All ten
-tasks are now dispatched — 6 merged, 4 in flight at last update.
+tasks are now dispatched — 7 merged, 3 in flight at last update.
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
@@ -43,8 +43,8 @@ tasks are now dispatched — 6 merged, 4 in flight at last update.
 | T5 Aggregate holdings + allocation (swe-2-max) | [f70e472b](https://app.devin.ai/sessions/f70e472bb5c448a0b0e9cbbdb6d6ada0) | [#7](https://github.com/tayden-b/sure-monarch/pull/7) | **merged** | 64cab29f |
 | T8 Mobile transactions UX (swe-2-max) | [182aa65f](https://app.devin.ai/sessions/182aa65ff25441e5b9fe7a2b13bc0636) | [#11](https://github.com/tayden-b/sure-monarch/pull/11) | **merged** | fcb8d3ec |
 | T10 Recurring polish (swe-2-high) | [0eb00f24](https://app.devin.ai/sessions/0eb00f24c7eb42639ec273b6daa0b468) | [#8](https://github.com/tayden-b/sure-monarch/pull/8) | **merged** | 8c9df482 |
-| T3 Cross-source dedup (swe-2-max) | [db5dae27](https://app.devin.ai/sessions/db5dae271fb34caaa7994889e5f6d041) | — | running | — |
-| T4 Rule ordering (swe-2-max) | [aa20bfb5](https://app.devin.ai/sessions/aa20bfb5b8c7409c91e1f1d85e69da8c) | [#13](https://github.com/tayden-b/sure-monarch/pull/13) | in review — diff passed, schema conflict resolved by orchestrator, CI re-running | — |
+| T3 Cross-source dedup (swe-2-max) | [db5dae27](https://app.devin.ai/sessions/db5dae271fb34caaa7994889e5f6d041) | [#14](https://github.com/tayden-b/sure-monarch/pull/14) | running | — |
+| T4 Rule ordering (swe-2-max) | [aa20bfb5](https://app.devin.ai/sessions/aa20bfb5b8c7409c91e1f1d85e69da8c) | [#13](https://github.com/tayden-b/sure-monarch/pull/13) | **merged** | 88f3be95 |
 | T6 Merchant spend report (swe-2-max) | [b33e15dc](https://app.devin.ai/sessions/b33e15dc395b47e28034fbb30487fe78) | — | running | — |
 | T7 Flex/discretionary budget (swe-2-max) | [7110bf7e](https://app.devin.ai/sessions/7110bf7e4a4c41b09d578caca4b14660) | — | running | — |
 

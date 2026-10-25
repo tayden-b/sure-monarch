@@ -18,10 +18,13 @@ namespace :rules do
 
     puts "Applying #{rules.count} rules for family #{family_id}..."
 
-    rules.find_each do |rule|
+    # Position order + shared claims: first rule touching a field wins it.
+    claimed_fields = Rule.new_claim_tracker
+
+    rules.ordered.each do |rule|
       print "  Applying rule '#{rule.name || rule.id}'... "
       begin
-        RuleJob.perform_now(rule, ignore_attribute_locks: true, execution_type: "manual")
+        RuleJob.perform_now(rule, ignore_attribute_locks: true, execution_type: "manual", claimed_fields: claimed_fields)
         puts "done"
       rescue => e
         puts "failed: #{e.message}"

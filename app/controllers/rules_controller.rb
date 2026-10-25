@@ -1,17 +1,22 @@
 class RulesController < ApplicationController
   include StreamExtensions
 
-  before_action :set_rule, only: [  :edit, :update, :destroy, :apply, :confirm ]
+  before_action :set_rule, only: [  :edit, :update, :destroy, :apply, :confirm, :move ]
 
   def index
-    @sort_by = params[:sort_by] || "name"
+    # "position" is the execution order and the default view; name/updated_at
+    # are display-only sorts that hide the reorder controls. Direction is
+    # ignored for position — priority always reads top-down.
+    @sort_by = params[:sort_by] || "position"
     @direction = params[:direction] || "asc"
 
-    allowed_columns = [ "name", "updated_at" ]
-    @sort_by = "name" unless allowed_columns.include?(@sort_by)
+    allowed_columns = [ "position", "name", "updated_at" ]
+    @sort_by = "position" unless allowed_columns.include?(@sort_by)
     @direction = "asc" unless [ "asc", "desc" ].include?(@direction)
 
-    @rules = Current.family.rules.includes(conditions: :sub_conditions).order(@sort_by => @direction)
+    base = Current.family.rules.includes(conditions: :sub_conditions)
+    @reorderable = @sort_by == "position"
+    @rules = @reorderable ? base.ordered : base.order(@sort_by => @direction)
 
     # Fetch recent rule runs with pagination
     recent_runs_scope = RuleRun
@@ -61,6 +66,20 @@ class RulesController < ApplicationController
     @rule.update!(active: true)
     @rule.apply_later(ignore_attribute_locks: true)
     redirect_back_or_to rules_path, notice: "#{@rule.resource_type.humanize} rule activated"
+  end
+
+  # Drag-and-drop persist from the sortable list: receives the full ordered
+  # id list and renumbers positions densely.
+  def reorder
+    Rule.reorder!(Current.family, params[:rule_ids])
+    head :ok
+  end
+
+  # Keyboard/no-JS fallback for reordering: one move-up/move-down step.
+  # Out-of-range moves are a no-op (the button was already at the boundary).
+  def move
+    notice = @rule.move(params[:direction]) ? t(".success") : nil
+    redirect_to rules_path, notice: notice
   end
 
   def confirm

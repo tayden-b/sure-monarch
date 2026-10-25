@@ -273,6 +273,87 @@ class RulesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to rules_url
   end
 
+  test "index defaults to the priority view with reorder controls" do
+    get rules_url
+    assert_response :success
+    assert_select "option[selected][value='position']"
+    assert_select "[data-controller~=rules-sortable]"
+    assert_select "[data-rules-sortable-target='section']"
+  end
+
+  test "index hides reorder controls when sorted by name" do
+    get rules_url(sort_by: "name")
+    assert_response :success
+    assert_select "[data-controller~=rules-sortable]", count: 0
+  end
+
+  test "reorder persists the posted order" do
+    family = @user.family
+    rules = 3.times.map do
+      family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    patch reorder_rules_url, params: { rule_ids: [ rules[2].id, rules[0].id, rules[1].id ] }, as: :json
+
+    assert_response :ok
+    ordered_ids = family.rules.ordered.where(id: rules.map(&:id)).pluck(:id)
+    assert_equal [ rules[2].id, rules[0].id, rules[1].id ], ordered_ids
+  end
+
+  test "reorder ignores ids from other families" do
+    family = @user.family
+    own = family.rules.create!(
+      resource_type: "transaction",
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+    other = families(:empty).rules.create!(
+      resource_type: "transaction",
+      position: 7,
+      actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+    )
+
+    patch reorder_rules_url, params: { rule_ids: [ other.id, own.id ] }, as: :json
+
+    assert_response :ok
+    assert_equal 1, own.reload.position, "Listed own rule is renumbered to the front"
+    assert_equal 7, other.reload.position, "Another family's rule must not be renumbered"
+  end
+
+  test "move swaps the rule with its neighbor" do
+    family = @user.family
+    rules = 3.times.map do
+      family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    patch move_rule_url(rules[1]), params: { direction: "up" }
+
+    assert_redirected_to rules_url
+    ordered_ids = family.rules.ordered.where(id: rules.map(&:id)).pluck(:id)
+    assert_equal [ rules[1].id, rules[0].id, rules[2].id ], ordered_ids
+  end
+
+  test "move is a no-op at the list boundary" do
+    family = @user.family
+    rules = 2.times.map do
+      family.rules.create!(
+        resource_type: "transaction",
+        actions: [ Rule::Action.new(action_type: "exclude_transaction") ]
+      )
+    end
+
+    patch move_rule_url(rules[0]), params: { direction: "up" }
+
+    assert_redirected_to rules_url
+    ordered_ids = family.rules.ordered.where(id: rules.map(&:id)).pluck(:id)
+    assert_equal rules.map(&:id), ordered_ids
+  end
+
   test "clear_ai_cache enqueues job and records the request in the debug log" do
     assert_enqueued_with(job: ClearAiCacheJob, args: [ @user.family ]) do
       post clear_ai_cache_rules_url

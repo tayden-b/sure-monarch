@@ -9,7 +9,13 @@ class Rule < ApplicationRecord
   accepts_nested_attributes_for :conditions, allow_destroy: true
   accepts_nested_attributes_for :actions, allow_destroy: true
 
+  # Rules execute in a user-defined order (Monarch parity): the lowest
+  # `position` applies first. `id` breaks position ties so the order is always
+  # deterministic, and rows without a position sort last (Postgres NULLS LAST).
+  scope :ordered, -> { order(:position, :id) }
+
   before_validation :normalize_name
+  before_create :assign_default_position
 
   validates :resource_type, presence: true
   validates :name, length: { minimum: 1 }, allow_nil: true
@@ -61,6 +67,28 @@ class Rule < ApplicationRecord
     nil
   end
 
+  # Fresh tracker shared across an ordered batch apply. Maps a conflict key
+  # (the field an action writes, e.g. :category_id) to the ids of transactions
+  # already claimed for that field by an earlier-positioned rule.
+  def self.new_claim_tracker
+    Hash.new { |hash, key| hash[key] = Set.new }
+  end
+
+  # Persists a new ordering. Ids absent from ordered_ids keep their relative
+  # order and move to the end, so a partial list can never drop or duplicate
+  # rules. Positions are renumbered densely (1..n) to keep moves idempotent.
+  def self.reorder!(family, ordered_ids)
+    by_id = family.rules.index_by(&:id)
+    ranked = Array(ordered_ids).filter_map { |id| by_id.delete(id.to_s) }
+    remaining = by_id.values.sort_by { |rule| [ rule.position || Float::INFINITY, rule.id ] }
+
+    transaction do
+      (ranked + remaining).each_with_index do |rule, index|
+        rule.update_column(:position, index + 1) if rule.position != index + 1
+      end
+    end
+  end
+
   # Calculates total unique resources affected across multiple rules
   # This handles overlapping rules by deduplicating transaction IDs
   def self.total_affected_resource_count(rules)
@@ -75,13 +103,31 @@ class Rule < ApplicationRecord
     transaction_ids.size
   end
 
-  def apply(ignore_attribute_locks: false, rule_run: nil)
+  # Ordering semantics (Monarch parity): rules apply in `position` order and
+  # the FIRST rule whose actions touch a field wins it — "first-match-wins
+  # per field", not all-match-apply. When a shared `claimed_fields` tracker
+  # (see Rule.new_claim_tracker) is passed by a batch apply, this rule claims
+  # every field it writes for every transaction it matches, and its own
+  # actions skip transactions an earlier rule already claimed for that field.
+  # Non-conflicting actions (e.g. send_email_notification) and merging
+  # actions (set_transaction_tags) are unaffected by claims. A standalone
+  # apply (no tracker) always applies the whole rule.
+  def apply(ignore_attribute_locks: false, rule_run: nil, claimed_fields: nil)
     total_modified = 0
     total_async_jobs = 0
     has_async = false
 
+    claimed_conflict_keys = claimed_fields ? actions.filter_map(&:conflict_key).uniq : []
+    # The claim set is the scope matched at this rule's turn, snapshotted
+    # before its own actions mutate the matched fields.
+    matched_ids = matching_transaction_ids if claimed_conflict_keys.any?
+
     actions.each do |action|
-      result = action.apply(matching_resources_scope, ignore_attribute_locks: ignore_attribute_locks, rule_run: rule_run)
+      scope = matching_resources_scope
+      if claimed_fields && (key = action.conflict_key) && claimed_fields[key].any?
+        scope = scope.where.not(transactions: { id: claimed_fields[key].to_a })
+      end
+      result = action.apply(scope, ignore_attribute_locks: ignore_attribute_locks, rule_run: rule_run)
 
       if result.is_a?(Hash) && result[:async]
         has_async = true
@@ -95,11 +141,28 @@ class Rule < ApplicationRecord
       end
     end
 
+    claimed_conflict_keys.each { |key| claimed_fields[key].merge(matched_ids) } if claimed_fields
+
     if has_async
       { modified_count: total_modified, async: true, jobs_count: total_async_jobs }
     else
       total_modified
     end
+  end
+
+  # Moves the rule one slot up or down the ordered list. Returns false when
+  # the move is out of range or the direction is invalid.
+  def move(direction)
+    ids = family.rules.ordered.pluck(:id)
+    index = ids.index(id)
+    return false if index.nil?
+
+    target = direction == "up" ? index - 1 : index + 1
+    return false if target.negative? || target >= ids.size
+
+    ids.insert(target, ids.delete_at(index))
+    self.class.reorder!(family, ids)
+    true
   end
 
   def apply_later(ignore_attribute_locks: false)
@@ -173,5 +236,9 @@ class Rule < ApplicationRecord
 
     def normalize_name
       self.name = nil if name.is_a?(String) && name.strip.empty?
+    end
+
+    def assign_default_position
+      self.position ||= (family&.rules&.maximum(:position) || 0) + 1
     end
 end
