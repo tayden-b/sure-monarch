@@ -34,6 +34,12 @@ class BalanceSheet
     [ assets.account_groups, liabilities.account_groups ].flatten
   end
 
+  # Groups with at least one list-visible account (hide_from_list rows never
+  # render, but still count toward group totals).
+  def listed_account_groups
+    account_groups.select { |group| group.listed_accounts.any? }
+  end
+
   def net_worth
     assets.total - liabilities.total
   end

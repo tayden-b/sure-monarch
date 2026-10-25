@@ -47,7 +47,7 @@
         </div>
 
         <div>
-          <% family.balance_sheet.assets.account_groups.each do |group| %>
+          <% family.balance_sheet.assets.listed_account_groups.each do |group| %>
             <%= render "accounts/accountable_group", account_group: group, mobile: mobile %>
           <% end %>
         </div>
@@ -75,7 +75,7 @@
         </div>
 
         <div>
-          <% family.balance_sheet.liabilities.account_groups.each do |group| %>
+          <% family.balance_sheet.liabilities.listed_account_groups.each do |group| %>
             <%= render "accounts/accountable_group", account_group: group, mobile: mobile %>
           <% end %>
         </div>
@@ -103,7 +103,7 @@
         </div>
 
         <div>
-          <% family.balance_sheet.account_groups.each do |group| %>
+          <% family.balance_sheet.listed_account_groups.each do |group| %>
             <%= render "accounts/accountable_group", account_group: group, mobile: mobile, all_tab: true %>
           <% end %>
         </div>

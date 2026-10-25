@@ -58,6 +58,21 @@
           <span class="text-sm"><%= t(".exclude_from_reports") %></span>
           <%= form.toggle :exclude_from_reports %>
         </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm"><%= t(".hide_from_list") %></span>
+          <%= form.toggle :hide_from_list %>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm"><%= t(".include_in_net_worth") %></span>
+          <%= form.toggle :include_in_net_worth %>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm"><%= t(".hide_in_budget") %></span>
+          <%= form.toggle :hide_in_budget %>
+        </div>
       </div>
     </details>
   </div>

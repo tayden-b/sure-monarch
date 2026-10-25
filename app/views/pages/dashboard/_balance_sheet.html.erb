@@ -51,10 +51,10 @@
           </div>
 
           <div class="rounded-lg bg-container font-medium text-sm min-w-fit">
-            <% classification_group.account_groups.each_with_index do |account_group, idx| %>
+            <% classification_group.listed_account_groups.each_with_index do |account_group, idx| %>
               <details class="group open:bg-container
                 <%= idx == 0 ? "rounded-t-lg" : "" %>
-                <%= idx == classification_group.account_groups.size - 1 ? "rounded-b-lg" : "" %>
+                <%= idx == classification_group.listed_account_groups.size - 1 ? "rounded-b-lg" : "" %>
               " data-group-key="<%= account_group.key %>"
               <%= "open" if Current.user.always_expanded_account_group?(account_group.key) %>>
                 <summary class="cursor-pointer p-4 group-open:bg-container rounded-lg flex items-center justify-between">
@@ -76,7 +76,7 @@
                 </summary>
 
                 <div>
-                  <% account_group.accounts.each_with_index do |account, idx| %>
+                  <% account_group.listed_accounts.each_with_index do |account, idx| %>
                     <div class="pl-7 pr-4 py-3 flex items-center justify-between text-sm font-medium">
                       <div class="flex items-center gap-2">
                         <%= render "accounts/logo", account: account, size: "sm", color: account_group.color %>
@@ -100,13 +100,13 @@
                       </div>
                     </div>
 
-                    <% if idx < account_group.accounts.size - 1 %>
+                    <% if idx < account_group.listed_accounts.size - 1 %>
                       <%= render "shared/ruler", classes: "ml-21 mr-4" %>
                     <% end %>
                   <% end %>
                 </div>
               </details>
-              <% unless idx == classification_group.account_groups.size - 1 %>
+              <% unless idx == classification_group.listed_account_groups.size - 1 %>
                 <%= render "shared/ruler", classes: "mx-4 group-ruler" %>
               <% end %>
             <% end %>

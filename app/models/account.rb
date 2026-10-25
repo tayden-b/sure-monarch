@@ -46,9 +46,14 @@ class Account < ApplicationRecord
 
   scope :visible, -> { where(status: VISIBLE_STATUSES) }
   scope :historical, -> { where(status: HISTORICAL_STATUSES) }
-  # Accounts whose data should be included in financial reports, dashboards,
-  # and exports. Excludes accounts where the user has opted to suppress them.
+  # Accounts whose transactions appear in reports (cash flow, income
+  # statements, exports). Net worth and budget surfaces use their own flags
+  # below so each Monarch visibility flag stays independent.
   scope :included_in_reports, -> { where(exclude_from_reports: false) }
+  scope :included_in_net_worth, -> { where(include_in_net_worth: true) }
+  scope :included_in_budget, -> { where(hide_in_budget: false) }
+  # Hidden from account lists/sidebars but still counted in all totals.
+  scope :listed, -> { where(hide_from_list: false) }
   scope :assets, -> { where(classification: "asset") }
   scope :liabilities, -> { where(classification: "liability") }
   scope :alphabetically, -> { order(:name) }
