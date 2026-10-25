@@ -5,6 +5,12 @@
 > For Plaid integration your Sure instance needs to be accessible by the internet behind a domain with working SSL.
 > See additional context in [maybe-finance/maybe#2419](https://github.com/maybe-finance/maybe/pull/2419).
 
+> [!NOTE]
+> **Self-hosted on a Mac behind Tailscale?** Use the condensed owner checklist in
+> [docs/setup/PLAID.md](../setup/PLAID.md) instead — it covers the free Trial
+> plan, `tailscale serve`/`funnel` URLs, Sandbox verification, and per-institution
+> Item usage for this deployment.
+
 # Setting Up Plaid
 
 ## 1. Create Your Plaid Account
