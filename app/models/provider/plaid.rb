@@ -2,7 +2,53 @@ class Provider::Plaid
   attr_reader :client, :region
 
   SUPPORTED_PLAID_PRODUCTS = %w[transactions investments liabilities].freeze
-  MAX_HISTORY_DAYS = Rails.env.development? ? 90 : 730
+
+  # Plaid caps `days_requested` at 730 — the absolute maximum history any
+  # Item can backfill.
+  MAX_HISTORY_DAYS = 730
+
+  # How much transaction history to request on first link. Self-hosted users
+  # get Plaid's maximum (730 days) by default; set PLAID_HISTORY_DAYS to
+  # shrink the initial backfill (e.g. 90 to iterate faster in Sandbox).
+  # Values above Plaid's 730-day cap are clamped.
+  def self.max_history_days
+    requested = ENV["PLAID_HISTORY_DAYS"].presence&.to_i
+    return MAX_HISTORY_DAYS unless requested&.positive?
+
+    [ requested, MAX_HISTORY_DAYS ].min
+  end
+
+  # Public origin Plaid can reach this instance at. A self-hosted instance is
+  # often browsed on a private address (localhost, or the tailnet hostname via
+  # Tailscale Serve) while Plaid-facing traffic (OAuth redirects, webhooks)
+  # goes through a public URL such as Tailscale Funnel. APP_HOST records that
+  # public origin; the older APP_DOMAIN is honoured too. Returns nil when
+  # neither is set so callers fall back to the request-derived host.
+  def self.app_base_url
+    raw = ENV["APP_HOST"].presence || ENV["APP_DOMAIN"].presence
+    return nil if raw.blank?
+
+    raw = "https://#{raw}" unless raw.match?(%r{\Ahttps?://}i)
+    raw.chomp("/")
+  end
+
+  # The URI Plaid redirects the browser to after OAuth institution login
+  # (Chase, Fidelity, ...). It must exactly match an entry under "Allowed
+  # redirect URIs" in the Plaid dashboard. `fallback` is the request-derived
+  # base URL used when no env configuration exists.
+  def self.redirect_uri(fallback:)
+    ENV["PLAID_REDIRECT_URI"].presence || "#{app_base_url || fallback}/accounts"
+  end
+
+  # Webhook receiver URL Plaid posts to. `fallback` is the request-derived
+  # base URL used when no env configuration exists.
+  def self.webhook_url(region:, fallback:)
+    if region.to_sym == :eu
+      ENV["PLAID_EU_WEBHOOK_URL"].presence || "#{app_base_url || fallback}/webhooks/plaid_eu"
+    else
+      ENV["PLAID_WEBHOOK_URL"].presence || "#{app_base_url || fallback}/webhooks/plaid"
+    end
+  end
 
   def initialize(config, region: :us)
     @client = Plaid::PlaidApi.new(
@@ -56,7 +102,7 @@ class Provider::Plaid
       request_params[:access_token] = access_token
       request_params[:update] = { account_selection_enabled: true } if account_selection_enabled
     else
-      request_params[:transactions] = { days_requested: MAX_HISTORY_DAYS }
+      request_params[:transactions] = { days_requested: self.class.max_history_days }
       request_params[:products] = [ get_primary_product(accountable_type) ]
       request_params[:additional_consented_products] = get_additional_consented_products(accountable_type)
     end
@@ -123,7 +169,7 @@ class Provider::Plaid
   end
 
   def get_item_investments(access_token, start_date: nil, end_date: Date.current)
-    start_date = start_date || MAX_HISTORY_DAYS.days.ago.to_date
+    start_date = start_date || self.class.max_history_days.days.ago.to_date
     holdings, holding_securities = get_item_holdings(access_token: access_token)
     transactions, transaction_securities = get_item_investment_transactions(access_token: access_token, start_date:, end_date:)
 

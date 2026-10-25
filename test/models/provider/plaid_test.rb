@@ -101,6 +101,88 @@ class Provider::PlaidTest < ActiveSupport::TestCase
     assert_equal "response", result
   end
 
+  test "requests 730 days of history by default" do
+    request = mock
+    Plaid::LinkTokenCreateRequest.expects(:new).with do |params|
+      params[:transactions] == { days_requested: 730 }
+    end.returns(request)
+    @plaid.client.expects(:link_token_create).with(request).returns("response")
+
+    @plaid.get_link_token(
+      user_id: "test-user-id",
+      webhooks_url: "https://example.com/webhooks",
+      redirect_url: @redirect_url
+    )
+  end
+
+  test "PLAID_HISTORY_DAYS overrides the requested history" do
+    with_env_overrides "PLAID_HISTORY_DAYS" => "365" do
+      request = mock
+      Plaid::LinkTokenCreateRequest.expects(:new).with do |params|
+        params[:transactions] == { days_requested: 365 }
+      end.returns(request)
+      @plaid.client.expects(:link_token_create).with(request).returns("response")
+
+      @plaid.get_link_token(
+        user_id: "test-user-id",
+        webhooks_url: "https://example.com/webhooks",
+        redirect_url: @redirect_url
+      )
+    end
+  end
+
+  test "PLAID_HISTORY_DAYS is clamped to Plaid's 730-day maximum" do
+    with_env_overrides "PLAID_HISTORY_DAYS" => "9999" do
+      assert_equal 730, Provider::Plaid.max_history_days
+    end
+  end
+
+  test "PLAID_REDIRECT_URI wins over APP_HOST and the request-derived fallback" do
+    with_env_overrides "PLAID_REDIRECT_URI" => "https://mac.tail-net.ts.net/accounts", "APP_HOST" => "ignored.example.com" do
+      assert_equal "https://mac.tail-net.ts.net/accounts",
+        Provider::Plaid.redirect_uri(fallback: "http://localhost:3000")
+    end
+  end
+
+  test "APP_HOST builds the default redirect URI" do
+    with_env_overrides "APP_HOST" => "mac.tail-net.ts.net", "APP_DOMAIN" => nil, "PLAID_REDIRECT_URI" => nil do
+      assert_equal "https://mac.tail-net.ts.net/accounts",
+        Provider::Plaid.redirect_uri(fallback: "http://localhost:3000")
+    end
+  end
+
+  test "redirect URI falls back to the request host when nothing is configured" do
+    with_env_overrides "APP_HOST" => nil, "APP_DOMAIN" => nil, "PLAID_REDIRECT_URI" => nil do
+      assert_equal "http://localhost:3000/accounts",
+        Provider::Plaid.redirect_uri(fallback: "http://localhost:3000")
+    end
+  end
+
+  test "PLAID_WEBHOOK_URL wins over APP_HOST and the request-derived fallback" do
+    with_env_overrides "PLAID_WEBHOOK_URL" => "https://hooks.example.com/p", "APP_HOST" => "ignored.example.com" do
+      assert_equal "https://hooks.example.com/p",
+        Provider::Plaid.webhook_url(region: :us, fallback: "http://localhost:3000")
+    end
+  end
+
+  test "APP_HOST builds the default webhook URL per region" do
+    with_env_overrides "APP_HOST" => "mac.tail-net.ts.net", "APP_DOMAIN" => nil, "PLAID_WEBHOOK_URL" => nil, "PLAID_EU_WEBHOOK_URL" => nil do
+      assert_equal "https://mac.tail-net.ts.net/webhooks/plaid",
+        Provider::Plaid.webhook_url(region: :us, fallback: "http://localhost:3000")
+      assert_equal "https://mac.tail-net.ts.net/webhooks/plaid_eu",
+        Provider::Plaid.webhook_url(region: :eu, fallback: "http://localhost:3000")
+    end
+  end
+
+  test "PLAID_EU_WEBHOOK_URL overrides only the EU webhook" do
+    with_env_overrides "PLAID_EU_WEBHOOK_URL" => "https://eu-hooks.example.com/p", "APP_HOST" => nil, "APP_DOMAIN" => nil do
+      assert_equal "https://eu-hooks.example.com/p",
+        Provider::Plaid.webhook_url(region: :eu, fallback: "http://localhost:3000")
+      assert_equal "http://localhost:3000/webhooks/plaid",
+        Provider::Plaid.webhook_url(region: :us, fallback: "http://localhost:3000")
+    end
+  end
+
   test "exchanges public token" do
     VCR.use_cassette("plaid/exchange_public_token") do
       public_token = @plaid.create_public_token

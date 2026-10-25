@@ -85,6 +85,51 @@ class PlaidItemsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "new sends the env-configured public URLs to Plaid (self-host / Tailscale Funnel)" do
+    plaid_provider = mock
+    Provider::Registry.stubs(:plaid_provider_for_region).with(:us).returns(plaid_provider)
+
+    plaid_provider.expects(:get_link_token).with(
+      has_entries(
+        webhooks_url: "https://mac.tail-net.ts.net/webhooks/plaid",
+        redirect_url: "https://mac.tail-net.ts.net/accounts"
+      )
+    ).returns(OpenStruct.new(link_token: "link-sandbox-123"))
+
+    with_env_overrides(
+      "APP_HOST" => "mac.tail-net.ts.net",
+      "PLAID_REDIRECT_URI" => nil,
+      "PLAID_WEBHOOK_URL" => nil,
+      "DEV_WEBHOOKS_URL" => nil
+    ) do
+      get new_plaid_item_url
+    end
+
+    assert_response :success
+  end
+
+  test "new honours exact PLAID_REDIRECT_URI and PLAID_WEBHOOK_URL overrides" do
+    plaid_provider = mock
+    Provider::Registry.stubs(:plaid_provider_for_region).with(:us).returns(plaid_provider)
+
+    plaid_provider.expects(:get_link_token).with(
+      has_entries(
+        webhooks_url: "https://hooks.example.com/plaid",
+        redirect_url: "https://app.example.com/accounts"
+      )
+    ).returns(OpenStruct.new(link_token: "link-sandbox-123"))
+
+    with_env_overrides(
+      "PLAID_REDIRECT_URI" => "https://app.example.com/accounts",
+      "PLAID_WEBHOOK_URL" => "https://hooks.example.com/plaid",
+      "APP_HOST" => "ignored.example.com"
+    ) do
+      get new_plaid_item_url
+    end
+
+    assert_response :success
+  end
+
   test "create" do
     @plaid_provider = mock
     Provider::Registry.expects(:plaid_provider_for_region).with("us").returns(@plaid_provider)
