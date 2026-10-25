@@ -1,9 +1,8 @@
 name: Sync Maybe mirror
 
+# Manual-only on this fork: upstream syncs must never run automatically here.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '17 3 * * *'
 
 permissions:
   contents: write

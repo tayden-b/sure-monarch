@@ -1,8 +1,9 @@
 name: Pipelock Security Scan
 
+# Manual-only on this fork: upstream supply-chain scanner, not part of this
+# fork's CI. Run manually if needed.
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

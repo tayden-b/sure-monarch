@@ -1,19 +1,9 @@
 name: Chart CI
 
+# Manual-only on this fork: Helm chart releases aren't used for a personal
+# self-hosted deployment. Kept for manual runs; file retained from upstream.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'charts/**'
-      - '.sure-version'
-      - '.github/workflows/chart-ci.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'charts/**'
-      - '.sure-version'
-      - '.github/workflows/chart-ci.yml'
 
 jobs:
   version-sync:
