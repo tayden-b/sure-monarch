@@ -61,14 +61,14 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   Tayden after he creates dashboard keys (docs/setup/PLAID.md step 2).
 - Webhooks need Funnel permanently on for real-time pushes; manual Sync is the
   documented alternative if he doesn't want the app public 24/7.
-- Importer defers: rule ordering (in names only), group-scoped/future
-  budget rows, daily recurring frequencies, cash-position splitting inside
-  investment accounts. (`needsReview`/`reviewStatus` UI filtering landed via
+- Importer defers: group-scoped/future budget rows, daily recurring
+  frequencies — accepted limitations. Rule ordering now lands via W2-F
+  (`rules.position` exists post-T4); cash-position reconciliation is being
+  verified by W2-F. (`needsReview`/`reviewStatus` UI filtering landed via
   T2's review queue.)
-- T10 follow-up: `Demo::Generator#create_transfer!` writes legs with
-  `kind: "standard"` — harmless to recurring detection now (T10 fixed the
-  identifier to filter by transfers membership) but leaks into other
-  kind-filtered surfaces (budgets, uncategorized). Candidate cleanup task.
+- T10 follow-up: `Demo::Generator#create_transfer!` wrote legs with
+  `kind: "standard"` — **being fixed by W2-F** (legs get
+  `Transfer.kind_for_account`/`funds_movement` like real transfers).
 - Gemini has no provider — manual/CSV account path documented.
 - Pre-existing test-env failures on baseline (eval/langfuse, simplefin ×3,
   hostings ×2, PG advisory-lock flake) reproduce without any changes — not
