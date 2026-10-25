@@ -31,6 +31,16 @@
       <% end %>
     <% end %>
 
+    <% if @needs_review_count.to_i > 0 %>
+      <% queue_active = Array(@q[:review_status]) == ["needs_review"] %>
+      <%= link_to transactions_path(q: { review_status: ["needs_review"] }),
+          class: "font-medium whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm border #{queue_active ? "border-warning bg-warning/10 text-warning" : "border-secondary text-primary hover:bg-surface-hover"}",
+          title: t(".review_queue_tooltip") do %>
+        <%= icon("flag", size: "sm") %>
+        <%= t(".review_queue", count: @needs_review_count) %>
+      <% end %>
+    <% end %>
+
     <%= button_tag type: "button",
         id: "toggle-checkboxes-button",
         aria: { label: t(".toggle_selection_checkboxes") },

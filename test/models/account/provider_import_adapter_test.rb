@@ -1435,6 +1435,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today - 2.days,
       name: "Coffee Shop",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "pending" => true } }
     )
 
@@ -1502,6 +1503,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today - 1.day,
       name: "Store A",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "pending" => true } }
     )
 
@@ -1512,6 +1514,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today - 1.day,
       name: "Store B",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "pending" => true } }
     )
 
@@ -1622,6 +1625,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today,
       name: "Amazon",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "payment_channel" => "online", "payment_meta" => { "payee" => "Amazon" } } },
       replace_extra_namespaces: [ "plaid" ]
     )
@@ -1636,6 +1640,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today,
       name: "Amazon",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "payment_channel" => "in store" } },
       replace_extra_namespaces: [ "plaid" ]
     )
@@ -1655,6 +1660,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today,
       name: "Amazon",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "payment_channel" => "online" } },
       replace_extra_namespaces: [ "plaid" ]
     )
@@ -1669,6 +1675,7 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       date: Date.today,
       name: "Amazon",
       source: "plaid",
+      allow_heuristic_matching: false,
       extra: { "plaid" => { "payment_channel" => "in store" } },
       replace_extra_namespaces: [ "plaid" ]
     )
@@ -1713,5 +1720,67 @@ class Account::ProviderImportAdapterTest < ActiveSupport::TestCase
       "the provider must not overwrite a rate the user typed"
     assert_equal "outgoing_payment_sent", refreshed.extra.dig("wise", "status"),
       "the provider's own namespace should still refresh"
+  end
+
+  test "auto-flags a new row when the source asks for review" do
+    entry = @adapter.import_transaction(
+      external_id: "monarch_flagged_1",
+      amount: 100,
+      currency: "USD",
+      date: Date.today,
+      name: "Flagged row",
+      source: "monarch",
+      allow_heuristic_matching: false,
+      extra: { "monarch" => { "needs_review" => true } }
+    )
+
+    assert entry.transaction.needs_review?
+  end
+
+  test "auto-flags a new row when review_status is needs_review" do
+    entry = @adapter.import_transaction(
+      external_id: "monarch_flagged_2",
+      amount: 100,
+      currency: "USD",
+      date: Date.today,
+      name: "Flagged via status",
+      source: "monarch",
+      allow_heuristic_matching: false,
+      extra: { "monarch" => { "review_status" => "needs_review" } }
+    )
+
+    assert entry.transaction.needs_review?
+  end
+
+  test "does not flag rows the provider did not ask to review" do
+    entry = @adapter.import_transaction(
+      external_id: "plaid_clean_1",
+      amount: 100,
+      currency: "USD",
+      date: Date.today,
+      name: "Clean row",
+      source: "plaid",
+      allow_heuristic_matching: false,
+      extra: { "plaid" => { "pending" => false } }
+    )
+
+    assert_not entry.transaction.needs_review?
+  end
+
+  test "auto-flag respects the disabled setting" do
+    Setting.stub(:import_auto_flag_needs_review, false) do
+      entry = @adapter.import_transaction(
+        external_id: "monarch_unflagged_1",
+        amount: 100,
+        currency: "USD",
+        date: Date.today,
+        name: "Flag skipped",
+        source: "monarch",
+        allow_heuristic_matching: false,
+        extra: { "monarch" => { "needs_review" => true } }
+      )
+
+      assert_not entry.transaction.needs_review?
+    end
   end
 end

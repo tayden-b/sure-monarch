@@ -570,6 +570,7 @@ Rails.application.routes.draw do
       post :mark_as_recurring
       post :merge_duplicate
       post :dismiss_duplicate
+      post :toggle_review
       post :unlock
       patch :tags, action: :update_tags
     end

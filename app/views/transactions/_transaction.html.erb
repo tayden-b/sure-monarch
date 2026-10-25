@@ -103,6 +103,17 @@
                       ) %>
                     <% end %>
 
+                    <%# Needs-review indicator %>
+                    <% if transaction.needs_review? %>
+                      <%= render DS::Pill.new(
+                        label: t("transactions.transaction.needs_review"),
+                        tone: :warning,
+                        marker: false,
+                        icon: "flag",
+                        title: t("transactions.transaction.needs_review_tooltip")
+                      ) %>
+                    <% end %>
+
                     <%# Potential duplicate indicator - different styling for low vs medium confidence %>
                     <% if transaction.has_potential_duplicate? %>
                       <% if transaction.low_confidence_duplicate? %>
