@@ -165,7 +165,7 @@ class Budget::RolloverCalculator
     # overwriting the other. Pin it to the whole family so the shared row holds
     # one number. Personal chains already scope to their owner's accounts.
     def household_account_scope
-      @household_account_scope ||= family.accounts.included_in_reports
+      @household_account_scope ||= family.accounts.included_in_budget
     end
 
     def ring_fenced_children_by_parent(budget)

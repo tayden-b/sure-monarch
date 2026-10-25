@@ -290,7 +290,7 @@ export default class extends Controller {
       .attr("fill", (d) => d.color || this.constructor.DEFAULT_COLOR)
       .attr("stroke", (d) => (d.color ? "none" : "var(--color-gray-500)"));
 
-    const hiddenLabels = this.#addNodeLabels(nodeGroups, width, nodes);
+    const hiddenLabels = this.#addNodeLabels(nodeGroups, width);
 
     return { nodeGroups, hiddenLabels };
   }
@@ -347,9 +347,8 @@ export default class extends Controller {
             L ${x0},${y1} Z`;
   }
 
-  #addNodeLabels(nodeGroups, width, nodes) {
+  #addNodeLabels(nodeGroups, width) {
     const controller = this;
-    const hiddenLabels = this.#calculateHiddenLabels(nodes);
 
     nodeGroups
       .append("text")
@@ -362,7 +361,6 @@ export default class extends Controller {
         "text-xs font-medium text-primary fill-current select-none",
       )
       .style("cursor", "default")
-      .style("opacity", (d) => (hiddenLabels.has(d.index) ? 0 : 1))
       .style("transition", "opacity 0.2s ease")
       .each(function (d) {
         const textEl = d3.select(this);
@@ -379,11 +377,21 @@ export default class extends Controller {
           .text(controller.#formatCurrency(d.value));
       });
 
+    const hiddenLabels = this.#calculateHiddenLabels(nodeGroups, width);
+
+    nodeGroups
+      .selectAll("text")
+      .style("opacity", (d) => (hiddenLabels.has(d.index) ? 0 : 1));
+
     return hiddenLabels;
   }
 
-  // Calculate which labels should be hidden to prevent overlap
-  #calculateHiddenLabels(nodes) {
+  // Hide labels that would overlap — vertically within a column, or
+  // horizontally with labels anchored from a neighboring column. Labels are
+  // measured after being drawn, so the check uses real text extents; on
+  // narrow viewports (phones) most long labels hide rather than collide.
+  // Largest nodes keep their labels first.
+  #calculateHiddenLabels(nodeGroups, width) {
     const hiddenLabels = new Set();
     const height = this.#chartElement().clientHeight || 400;
     const isLargeGraph = height > 600;
@@ -391,35 +399,45 @@ export default class extends Controller {
       ? this.constructor.MIN_LABEL_SPACING * 0.7
       : this.constructor.MIN_LABEL_SPACING;
 
-    // Group nodes by column (using depth which d3-sankey assigns)
-    const columns = new Map();
-    nodes.forEach((node) => {
-      const depth = node.depth;
-      if (!columns.has(depth)) columns.set(depth, []);
-      columns.get(depth).push(node);
-    });
+    const boxes = nodeGroups
+      .selectAll("text")
+      .nodes()
+      .map((el) => {
+        const node = el.__data__;
+        const lineWidths = Array.from(el.querySelectorAll("tspan"), (tspan) =>
+          tspan.getComputedTextLength(),
+        );
+        const textWidth = Math.max(...lineWidths, 0);
+        const anchoredStart = node.x0 < width / 2;
+        const left = anchoredStart
+          ? node.x1 + 6
+          : node.x0 - 6 - textWidth;
+        return {
+          index: node.index,
+          value: node.value,
+          left,
+          right: left + textWidth,
+          centerY: (node.y0 + node.y1) / 2,
+          nodeHeight: node.y1 - node.y0,
+        };
+      })
+      .sort((a, b) => b.value - a.value);
 
-    // For each column, check for overlapping labels
-    columns.forEach((columnNodes) => {
-      // Sort by vertical position
-      columnNodes.sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2);
-
-      let lastVisibleY = Number.NEGATIVE_INFINITY;
-
-      columnNodes.forEach((node) => {
-        const nodeY = (node.y0 + node.y1) / 2;
-        const nodeHeight = node.y1 - node.y0;
-
-        if (isLargeGraph && nodeHeight > minSpacing * 1.5) {
-          lastVisibleY = nodeY;
-        } else if (nodeY - lastVisibleY < minSpacing) {
-          // Too close to previous visible label, hide this one
-          hiddenLabels.add(node.index);
-        } else {
-          lastVisibleY = nodeY;
-        }
-      });
-    });
+    const kept = [];
+    for (const box of boxes) {
+      const tall = isLargeGraph && box.nodeHeight > minSpacing * 1.5;
+      const collides = kept.some(
+        (other) =>
+          box.left < other.right &&
+          box.right > other.left &&
+          Math.abs(box.centerY - other.centerY) < minSpacing,
+      );
+      if (!tall && collides) {
+        hiddenLabels.add(box.index);
+      } else {
+        kept.push(box);
+      }
+    }
 
     return hiddenLabels;
   }

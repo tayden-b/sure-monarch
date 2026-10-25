@@ -300,8 +300,10 @@ class Monarch::Importer
       cash_account = %w[Depository CreditCard Loan Property Vehicle OtherAsset OtherLiability].include?(accountable.class.name)
 
       deactivated_at = parse_date(r["deactivatedAt"])
-      hidden = r["isHidden"] == true
-      disabled = deactivated_at.present? || hidden
+      # Only `deactivatedAt` disables an account (stops sync). Monarch's
+      # `isHidden`/`hideFromList` hide the row from lists while its balance
+      # still counts, which maps to `hide_from_list` instead.
+      disabled = deactivated_at.present?
 
       institution = r["institution"] || {}
 
@@ -311,8 +313,11 @@ class Monarch::Importer
         balance: balance,
         cash_balance: cash_account ? balance : 0,
         status: disabled ? "disabled" : "active",
-        disabled_at: disabled ? (deactivated_at&.to_time || Time.current) : nil,
-        exclude_from_reports: r["includeInNetWorth"] == false || r["hideTransactionsFromReports"] == true,
+        disabled_at: deactivated_at&.to_time,
+        hide_from_list: r["isHidden"] == true || r["hideFromList"] == true,
+        include_in_net_worth: r["includeInNetWorth"] != false,
+        exclude_from_reports: r["hideTransactionsFromReports"] == true,
+        hide_in_budget: r["hideInBudget"] == true,
         institution_name: institution["name"].presence,
         institution_domain: institution_domain(institution)
       }

@@ -129,11 +129,17 @@ export default class extends Controller {
       strategy: "fixed",
     }).then(({ x, y }) => {
       if (useMobileFullwidth) {
+        // Bottom-sheet anchoring on small screens: pinning to the viewport's
+        // bottom edge keeps tall panels (e.g. the transaction filter sheet)
+        // fully on screen, where floating-ui's flip() can otherwise place
+        // them partially off-screen.
+        const height = this.contentTarget.getBoundingClientRect().height;
+        const top = Math.max(5, window.innerHeight - height - 5);
         Object.assign(this.contentTarget.style, {
           position: "fixed",
           left: "0px",
           width: "100vw",
-          top: `${y}px`,
+          top: `${top}px`,
         });
       } else {
         Object.assign(this.contentTarget.style, {

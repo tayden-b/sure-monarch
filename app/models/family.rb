@@ -498,8 +498,8 @@ class Family < ApplicationRecord
     @balance_sheets[user&.id] ||= BalanceSheet.new(self, user: user)
   end
 
-  def income_statement(user: Current.user, accounts: nil)
-    IncomeStatement.new(self, user: user, accounts: accounts)
+  def income_statement(user: Current.user, accounts: nil, purpose: :reports)
+    IncomeStatement.new(self, user: user, accounts: accounts, purpose: purpose)
   end
 
   # Returns the Investment Contributions category for this family, creating it if it doesn't exist.

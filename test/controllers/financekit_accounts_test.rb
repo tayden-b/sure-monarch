@@ -12,7 +12,7 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
   end
 
   test "a family with only FinanceKit accounts sees them on the accounts index" do
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "#financekit-accounts" do
@@ -42,7 +42,7 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
     queued, = accept_batch(financekit_payload(sequence: @item.next_sequence,
       predecessor_digest: @item.predecessor_digest))
 
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "a[href=?]", confirm_unlink_account_path(account)
 
@@ -64,7 +64,7 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
     error = assert_raises(Financekit::Error) { accept_batch }
     assert_equal "connection_revoked", error.code
 
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_select "#manual-accounts a[href=?]", account_path(account)
     get account_url(account)
     assert_response :success
@@ -155,12 +155,12 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
 
   test "index shows disabled Wallet accounts but excludes pending deletion" do
     @source.account.update!(status: "disabled")
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "#financekit-accounts a[href=?]", account_path(@source.account)
 
     @source.account.update!(status: "pending_deletion")
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "#financekit-accounts", count: 0
   end
@@ -178,7 +178,7 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
     shared.account_shares.create!(user: viewer, permission: "read_only")
 
     sign_in viewer
-    get accounts_url
+    get accounts_url(view: "connections")
 
     assert_response :success
     assert_select "#financekit-accounts a[href=?]", account_path(shared)
@@ -186,7 +186,7 @@ class FinancekitAccountsTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, "Private Wallet"
 
     sign_in users(:family_admin)
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_select "#financekit-accounts", count: 0
   end

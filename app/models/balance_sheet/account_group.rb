@@ -34,7 +34,12 @@ class BalanceSheet::AccountGroup
   end
 
   def total
-    accounts.reject { |a| a.respond_to?(:exclude_from_reports?) && a.exclude_from_reports? }.sum(&:converted_balance)
+    accounts.reject { |a| a.respond_to?(:include_in_net_worth?) && !a.include_in_net_worth? }.sum(&:converted_balance)
+  end
+
+  # Rows hidden from lists still count in #total; they just don't render.
+  def listed_accounts
+    accounts.reject { |a| a.respond_to?(:hide_from_list?) && a.hide_from_list? }
   end
 
   def weight

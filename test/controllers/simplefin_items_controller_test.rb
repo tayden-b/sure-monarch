@@ -522,7 +522,7 @@ class SimplefinItemsControllerTest < ActionDispatch::IntegrationTest
     })
     sync.update_column(:created_at, Time.current)
 
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     assert_match(/Citibank card may have been replaced/, response.body)
     assert_match(/Citi Double Cash Card-3831/, response.body)
@@ -570,7 +570,7 @@ class SimplefinItemsControllerTest < ActionDispatch::IntegrationTest
     })
     sync.update_column(:created_at, Time.current)
 
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_response :success
     refute_match(/Citibank card may have been replaced/, response.body,
       "banner should disappear once the relink has landed on the new sfa")
@@ -613,7 +613,7 @@ class SimplefinItemsControllerTest < ActionDispatch::IntegrationTest
     sync.update_column(:created_at, Time.current)
 
     # Banner is present before dismissal
-    get accounts_url
+    get accounts_url(view: "connections")
     assert_match(/Citibank card may have been replaced/, response.body)
 
     # Dismiss — pair key (dormant + active)
@@ -626,7 +626,7 @@ class SimplefinItemsControllerTest < ActionDispatch::IntegrationTest
                     "#{old_sfa.id}:#{new_sfa.id}"
 
     # Banner is gone after dismissal
-    get accounts_url
+    get accounts_url(view: "connections")
     refute_match(/Citibank card may have been replaced/, response.body,
       "banner should not render for a dismissed pair")
   end

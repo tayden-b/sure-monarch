@@ -480,7 +480,7 @@ class SnaptradeItemsControllerTest < ActionDispatch::IntegrationTest
     @snaptrade_item.update!(status: :requires_update)
 
     with_oauth_app do
-      get accounts_url
+      get accounts_url(view: "connections")
 
       assert_select "a[href='#{oauth_authorize_snaptrade_items_path(item_id: @snaptrade_item.id)}'][data-turbo-frame='_top']", text: /Reconnect/
       assert_select "a[href='#{connect_snaptrade_item_path(@snaptrade_item)}']", text: /Reconnect/, count: 0
@@ -491,7 +491,7 @@ class SnaptradeItemsControllerTest < ActionDispatch::IntegrationTest
     @snaptrade_item.update!(status: :requires_update)
 
     with_device_flow_only do
-      get accounts_url
+      get accounts_url(view: "connections")
 
       assert_select "a[href='#{oauth_device_authorize_snaptrade_items_path(item_id: @snaptrade_item.id)}'][data-turbo-frame='drawer']", text: /Reconnect/
     end
