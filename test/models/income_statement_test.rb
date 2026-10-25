@@ -773,4 +773,26 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
     assert_equal 1, totals_query_calls
   end
+
+  test "categorized transactions follow their category's classification, not the sign" do
+    # A refund (negative amount) under an expense category nets against
+    # expenses instead of counting as income.
+    create_transaction(account: @checking_account, amount: -50, category: @groceries_category)
+
+    totals = IncomeStatement.new(@family).totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal Money.new(1000, @family.currency), totals.income_money
+    assert_equal Money.new(200 + 300 + 400 - 50, @family.currency), totals.expense_money
+  end
+
+  test "transfer-classified categories are excluded from income and expense totals" do
+    transfer_category = @family.categories.create! name: "Transfers", classification: "transfer"
+    create_transaction(account: @checking_account, amount: 500, category: transfer_category)
+    create_transaction(account: @checking_account, amount: -500, category: transfer_category)
+
+    totals = IncomeStatement.new(@family).totals(date_range: Period.last_30_days.date_range)
+
+    assert_equal Money.new(1000, @family.currency), totals.income_money
+    assert_equal Money.new(200 + 300 + 400, @family.currency), totals.expense_money
+  end
 end

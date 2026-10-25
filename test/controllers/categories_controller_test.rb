@@ -16,6 +16,42 @@ class CategoriesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#category_#{categories(:food_and_drink).id} [data-testid='category-name']", text: categories(:food_and_drink).name
   end
 
+  test "index groups categories under typed groups" do
+    expense_group = @family.category_groups.create!(name: "Everyday Expenses", classification: "expense", position: 1)
+    income_group = @family.category_groups.create!(name: "Income Streams", classification: "income", position: 2)
+    categories(:food_and_drink).update!(category_group: expense_group)
+    categories(:income).update!(category_group: income_group)
+
+    get categories_url
+
+    assert_response :success
+
+    headers = css_select("[data-testid='category-group-header']").map { |h| h.text.squish }
+    assert_equal "Everyday Expenses · 2 · Expense", headers[0] # parent + synced subcategory
+    assert_equal "Income Streams · 1 · Income", headers[1]
+    assert_equal "Ungrouped · 1", headers[2]
+
+    # Ungrouped rows still show their own classification
+    assert_select "#category_#{categories(:one).id} [data-testid='category-content']", text: /Test.*Expense/m
+  end
+
+  test "create with group and classification" do
+    group = @family.category_groups.create!(name: "Income Streams", classification: "income")
+
+    assert_difference "Category.count", +1 do
+      post categories_url, params: {
+        category: {
+          name: "Consulting",
+          color: Category::COLORS.sample,
+          classification: "transfer",
+          category_group_id: group.id } }
+    end
+
+    new_category = Category.order(:created_at).last
+    assert_equal group, new_category.category_group
+    assert_equal "income", new_category.classification # group classification wins
+  end
+
   test "index avoids per-category subcategory and transaction existence queries" do
     4.times do |idx|
       parent = @family.categories.create!(

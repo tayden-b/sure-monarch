@@ -26,8 +26,7 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal 12, report["accounts"]["archive_count"]
     assert_equal 12, report["accounts"]["created"]
     assert_equal 8, report["categories"]["archive_count"]
-    # "Income" group dedupes onto the fixture family's existing Income category
-    assert_equal 3, report["category_groups"].values_at("created", "updated").sum
+    assert_equal 3, report["category_groups"]["created"]
     assert_equal 2, report["tags"]["created"]
     assert_equal 8, report["transactions"]["created"]
     assert_equal 7, report["balance_history"]["created"]
@@ -147,13 +146,43 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal %w[reimbursable], txn2.tags.pluck(:name)
   end
 
-  test "categories land under their group's parent category" do
+  test "category groups carry Monarch type, order and color" do
     run_import
 
+    expense_group = mapping_for("category_groups", "cg-expense").record
+    assert_instance_of CategoryGroup, expense_group
+    assert_equal "Everyday Expenses", expense_group.name
+    assert_equal "expense", expense_group.classification
+    assert_equal 1, expense_group.position
+    assert_equal "#4da568", expense_group.color
+
+    income_group = mapping_for("category_groups", "cg-income").record
+    assert_equal "income", income_group.classification
+    assert_equal 2, income_group.position
+    assert_nil income_group.color # Monarch group colors can be null — preserved
+
+    assert_equal "transfer", mapping_for("category_groups", "cg-transfer").record.classification
+  end
+
+  test "categories land in their group and inherit its classification" do
+    run_import
+
+    expense_group = mapping_for("category_groups", "cg-expense").record
+
     groceries = mapping_for("categories", "cat-groceries").record
-    assert_equal "Everyday Expenses", groceries.parent.name
-    assert_equal groceries.parent, mapping_for("categories", "cat-gas").record.parent
-    assert_nil mapping_for("categories", "cat-groceries").record.parent.parent
+    assert_equal expense_group, groceries.category_group
+    assert_equal "expense", groceries.classification
+    assert_nil groceries.parent # Monarch has no subcategories — imported flat
+
+    # "Restaurants" collides with an existing subcategory — disambiguated by group name
+    dining = mapping_for("categories", "cat-dining").record
+    assert_equal "Everyday Expenses — Restaurants", dining.name
+    assert_equal expense_group, dining.category_group
+
+    assert_equal "income", mapping_for("categories", "cat-paychecks").record.classification
+    assert_equal "income", mapping_for("categories", "cat-interest").record.classification
+    assert_equal "transfer", mapping_for("categories", "cat-transfer").record.classification
+    assert_equal "transfer", mapping_for("categories", "cat-ccpayment").record.classification
   end
 
   test "balance history becomes reconciliation valuations" do
@@ -247,11 +276,11 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
 
   test "idempotent: second run updates in place, no duplicates" do
     run_import
-    counts = [ Entry, Account, Category, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
+    counts = [ Entry, Account, Category, CategoryGroup, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
 
     second = run_import
     assert second.complete?
-    assert_equal counts, [ Entry, Account, Category, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
+    assert_equal counts, [ Entry, Account, Category, CategoryGroup, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
 
     report = second.report["collections"]
     assert_equal 8, report["transactions"]["updated"]
@@ -278,5 +307,6 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_empty Entry.where(source: "monarch")
     assert_empty @family.accounts.where(name: "Everyday Checking")
     assert_empty @family.categories.where(name: "Groceries")
+    assert_empty @family.category_groups.where(name: "Everyday Expenses")
   end
 end

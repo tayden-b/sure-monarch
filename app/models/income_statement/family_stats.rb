@@ -43,6 +43,7 @@ class IncomeStatement::FamilyStats
             SUM(#{converted_amount_sql("t")}) as total
           FROM transactions t
           #{entries_join_sql("t")}
+          #{categories_join_sql("t")}
           #{accounts_join_sql}
           #{exchange_rates_join_sql}
           WHERE a.family_id = :family_id

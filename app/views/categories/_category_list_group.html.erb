@@ -1,4 +1,4 @@
-<%# locals: (title:, categories:, family: nil, category_groups: nil, category_ids_with_transactions: nil) %>
+<%# locals: (title:, categories:, family: nil, category_groups: nil, category_ids_with_transactions: nil, classification: nil, show_classification: false) %>
 <% category_groups ||= Category::Group.for(categories) %>
 <% if category_ids_with_transactions.nil? %>
   <% category_ids_with_transactions = if categories.any? && family
@@ -9,10 +9,14 @@
 <% end %>
 
 <div class="rounded-xl bg-container-inset space-y-1 p-1">
-  <div class="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-secondary uppercase">
+  <div class="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-secondary uppercase" data-testid="category-group-header">
     <p><%= title %></p>
     <span class="text-subdued">&middot;</span>
     <p><%= categories.count %></p>
+    <% if classification.present? %>
+      <span class="text-subdued">&middot;</span>
+      <p class="text-subdued"><%= t(".classification.#{classification}") %></p>
+    <% end %>
   </div>
 
   <div class="shadow-border-xs rounded-lg bg-container">
@@ -21,13 +25,15 @@
         <%= render "categories/category",
                    category: group.category,
                    subcategories: group.subcategories,
-                   has_transactions: category_ids_with_transactions.key?(group.category.id) %>
+                   has_transactions: category_ids_with_transactions.key?(group.category.id),
+                   show_classification: show_classification %>
 
         <% group.subcategories.each do |subcategory| %>
           <%= render "categories/category",
                      category: subcategory,
                      subcategories: [],
-                     has_transactions: category_ids_with_transactions.key?(subcategory.id) %>
+                     has_transactions: category_ids_with_transactions.key?(subcategory.id),
+                     show_classification: show_classification %>
         <% end %>
 
         <% unless idx == category_groups.count - 1 %>
