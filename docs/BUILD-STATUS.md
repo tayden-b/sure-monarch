@@ -20,7 +20,7 @@ where the build stands — updated by the orchestrator after every merge.
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
-| W1-A Monarch archive importer (rake + source-ID mapping + reconciliation + revert + RUNBOOK) | [1ee31583](https://app.devin.ai/sessions/1ee315839eec4395a30565cf13ca214c) | [#6](https://github.com/tayden-b/sure-monarch/pull/6) | open — under review, CI pending | — |
+| W1-A Monarch archive importer (rake + source-ID mapping + reconciliation + revert + RUNBOOK) | [1ee31583](https://app.devin.ai/sessions/1ee315839eec4395a30565cf13ca214c) | [#6](https://github.com/tayden-b/sure-monarch/pull/6) | **merged** (by Tayden at 19:39Z while `test_system` was still running — all other checks green; branch CI verified after) | 18738d7e |
 | W1-B Plaid self-host (env URLs, 730-day history, Sandbox smoke, docs/setup/PLAID.md) | [58db1784](https://app.devin.ai/sessions/58db178441a3439e853eb361e6259c0a) | [#4](https://github.com/tayden-b/sure-monarch/pull/4) | **merged** | d0166aa2 |
 | W1-C Parity gap audit → docs/PARITY-AUDIT.md | [23264c42](https://app.devin.ai/sessions/23264c421ec346d98b32579a4b97eb38) | [#2](https://github.com/tayden-b/sure-monarch/pull/2) | **merged** | 73464ca1 |
 | W1-D Mac deploy kit (deploy/mac, docs/setup/MAC.md) | [df23b31c](https://app.devin.ai/sessions/df23b31c19a74337b4ceb216386d2b67) | [#3](https://github.com/tayden-b/sure-monarch/pull/3) | **merged** | 59e100f1 |
@@ -28,14 +28,24 @@ where the build stands — updated by the orchestrator after every merge.
 
 ## Wave 2 — parity surfaces
 
-Not yet dispatched. Dispatch follows `docs/PARITY-AUDIT.md` (merged via #2),
-priority order: accounts/net-worth overview → unified transactions feed + rules
-→ mobile-browser UX → investments/holdings → recurring → cash-flow reports &
-budgets → data hygiene (import↔Plaid dedup, import revert UX).
+Dispatched per `docs/PARITY-AUDIT.md` §3 (T-numbering is the audit's).
+Batch 1 = 6 parallel workers on non-overlapping file sets; batch 2
+(T3 dedup, T4 rule ordering, T6 merchant report, T7 flex budget) follows
+once batch-1 dependencies land (T3 needs needs-review + importer
+provenance; T4 after T2's rule-executor edit; T6/T7 after T1).
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
-| — | — | — | pending dispatch | — |
+| T1 Category classification + groups (swe-2-max) | [a9625182](https://app.devin.ai/sessions/a962518265df4a33a0520b287724f121) | — | running | — |
+| T9 Accounts flags + type-first grouping (swe-2-max) | [16248e1e](https://app.devin.ai/sessions/16248e1e62994260ad45b6d12970a66f) | — | running | — |
+| T2 Needs-review queue (swe-2-max) | [0dd05265](https://app.devin.ai/sessions/0dd052659b2f466185238c125c67113d) | — | running | — |
+| T5 Aggregate holdings + allocation (swe-2-max) | [f70e472b](https://app.devin.ai/sessions/f70e472bb5c448a0b0e9cbbdb6d6ada0) | — | running | — |
+| T8 Mobile transactions UX (swe-2-max) | [182aa65f](https://app.devin.ai/sessions/182aa65ff25441e5b9fe7a2b13bc0636) | — | running | — |
+| T10 Recurring polish (swe-2-high) | [0eb00f24](https://app.devin.ai/sessions/0eb00f24c7eb42639ec273b6daa0b468) | — | running | — |
+| T3 Cross-source dedup | — | — | queued (needs T2) | — |
+| T4 Rule ordering | — | — | queued (needs T2) | — |
+| T6 Merchant spend report | — | — | queued (needs T1) | — |
+| T7 Flex/discretionary budget | — | — | queued (needs T1) | — |
 
 ## Integration gate
 
@@ -72,7 +82,7 @@ A consolidated ordered checklist lands in docs/HANDOFF.md at the end of the buil
 
 ## What's next
 
-1. Merge PR #6 (importer) once CI is green.
-2. Dispatch Wave 2 workers per docs/PARITY-AUDIT.md.
+1. Review/merge Wave-2 batch-1 PRs as they land (T1, T9, T2, T5, T8, T10).
+2. Dispatch Wave-2 batch-2 (T3 dedup, T4 rule ordering, T6 merchant report, T7 flex budget) as dependencies land.
 3. Integration-gate rehearsal worker.
 4. docs/HANDOFF.md + final report to Tayden.
