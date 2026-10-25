@@ -1012,15 +1012,20 @@ class Demo::Generator
     end
 
     def create_transfer!(from_account, to_account, amount, name, date)
+      # Same kind convention as Family::AutoTransferMatchable / Transfer::Creator:
+      # the DESTINATION account decides the outflow leg's kind (a card or loan
+      # destination marks the payment kind), and the inflow leg is always a
+      # plain funds movement. Stamping "standard" here would leak the legs into
+      # every kind-filtered surface (budgets, uncategorized, transfer filters).
       outflow = from_account.entries.create!(
-        entryable: Transaction.new,
+        entryable: Transaction.new(kind: Transfer.kind_for_account(to_account)),
         amount: amount,
         name: name,
         currency: from_account.currency,
         date: date
       )
       inflow = to_account.entries.create!(
-        entryable: Transaction.new,
+        entryable: Transaction.new(kind: "funds_movement"),
         amount: -amount,
         name: name,
         currency: to_account.currency,

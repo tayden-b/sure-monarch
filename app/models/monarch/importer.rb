@@ -648,20 +648,27 @@ class Monarch::Importer
     # ------------------------------------------------------------------ rules
 
     # Monarch rules AND their criteria; Sure conditions are also ANDed.
-    # Order is preserved twice: `order` is written to `rules.position` (the
-    # field ordered application reads), and echoed in the rule name so it
-    # still sorts sensibly when the list is viewed by name.
+    # Monarch's `order` is applied once everything imports via Rule.reorder!,
+    # which writes dense 1..n positions (the field `Rule.ordered` and
+    # first-match-wins application read); the order is also echoed in the rule
+    # name so it still sorts sensibly when the list is viewed by name.
     def import_rules
       ordered = archive.records("rules")
       report.archive_count("rules", ordered.size)
 
+      imported_ids = []
       ordered.sort_by { |r| r["order"] || Float::INFINITY }.each do |r|
         begin
-          import_rule(r)
+          imported_ids << import_rule(r)&.id
         rescue => e
           report.error("rules", r["id"], "#{e.class}: #{e.message}")
         end
       end
+
+      # Imported rules rank first in Monarch order; rules not in this list
+      # (Sure-created ones, or a previously-imported rule skipped this run)
+      # keep their relative order at the end.
+      Rule.reorder!(family, imported_ids.compact)
     end
 
     def import_rule(r)
@@ -669,9 +676,6 @@ class Monarch::Importer
       rule = rule_id ? family.rules.find_by(id: rule_id) : family.rules.new(resource_type: "transaction")
       rule.name = rule_name(r)
       rule.active = true
-      # Monarch's 0-based `order` is preserved verbatim; a rule without one
-      # keeps its current position, or gets the next slot on create.
-      rule.position = r["order"] if r["order"].present?
 
       rule.conditions.destroy_all if rule.persisted?
       rule.actions.destroy_all if rule.persisted?
@@ -717,6 +721,7 @@ class Monarch::Importer
       rule.save!
       record_mapping!("rules", r["id"], rule, r)
       was_new ? report.created("rules") : report.updated("rules")
+      rule
     end
 
     def rule_name(r)

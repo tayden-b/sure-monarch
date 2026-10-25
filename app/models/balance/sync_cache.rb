@@ -44,7 +44,12 @@ class Balance::SyncCache
       @holdings_value_by_date ||= begin
         missing_rate_pairs = []
 
-        totals = account.holdings.each_with_object(Hash.new(0)) do |h, acc|
+        # Cash-kind securities (synthetic CASH-* positions, e.g. a brokerage
+        # cash sweep) are the account's cash sleeve rendered as a holding row,
+        # not invested value. Counting them here double-counts them: the
+        # valuation total already includes them and they belong on the cash
+        # side of the cash/non-cash split.
+        totals = account.holdings.joins(:security).where.not(securities: { kind: "cash" }).each_with_object(Hash.new(0)) do |h, acc|
           begin
             converted = Money.new(h.amount, h.currency).exchange_to(account.currency, date: h.date).amount
           rescue Money::ConversionError => error

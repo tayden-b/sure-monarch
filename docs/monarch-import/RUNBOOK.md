@@ -155,12 +155,16 @@ record.
 - **Budgets**: Monarch's future-planning rows past the current month are
   skipped; `group`-scoped budget rows are skipped (Sure budgets are
   per-category).
-- **Rule order**: preserved only via the generated rule name; Sure's rules
-  engine has no order column.
+- **Rule order**: Monarch's `order` is imported into `rules.position` (dense
+  per-family ordering via `Rule.reorder!`, first-match-wins application) and
+  echoed in the generated rule name for readability.
 - **Holdings** are imported as provider-authored snapshots. Monarch's archive
   has no trade ledger, so Sure's trade-derived holdings materialization is
   intentionally skipped for these rows (the importer passes the imported
   `security_ids` to `Balance::Materializer`, which suppresses the forward
-  purge that would otherwise delete non-provider holdings).
+  purge that would otherwise delete non-provider holdings). Cash positions
+  (`type: "cash"`) inside investment accounts import correctly: they become
+  `kind: "cash"` security holdings — shown as the "cash" slice in allocation —
+  and fold into `cash_balance` rather than counting as invested value.
 - **UI import** (zip upload via the `Import` STI) is not implemented — rake
   only. See the PR "Out of scope" notes.
