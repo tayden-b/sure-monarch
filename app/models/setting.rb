@@ -178,6 +178,11 @@ class Setting < RailsSettings::Base
     simplefin && plaid
   end
   field :syncs_include_pending, type: :boolean, default: SYNCS_INCLUDE_PENDING_DEFAULT
+  # When a provider payload or file import asks for review (e.g. Monarch's
+  # needsReview/reviewStatus, or a provider namespace carrying needs_review),
+  # the new row gets transactions.needs_review so it lands in the review
+  # queue. Set IMPORT_AUTO_FLAG_NEEDS_REVIEW=0 to disable.
+  field :import_auto_flag_needs_review, type: :boolean, default: ENV.fetch("IMPORT_AUTO_FLAG_NEEDS_REVIEW", "1") == "1"
   field :auto_sync_enabled, type: :boolean, default: ENV.fetch("AUTO_SYNC_ENABLED", "1") == "1"
   field :auto_sync_time, type: :string, default: ENV.fetch("AUTO_SYNC_TIME", "02:22")
   field :auto_sync_timezone, type: :string, default: ENV.fetch("AUTO_SYNC_TIMEZONE", "UTC")

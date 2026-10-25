@@ -136,6 +136,21 @@ class Transaction < ApplicationRecord
     where(conditions.join(" AND "))
   }
 
+  # Needs-review queue scopes. Unlike `pending` (provider-reported sync state
+  # read out of `extra`), needs_review is a first-class workflow flag: set by
+  # imports, provider syncs and rules, and cleared by the user marking a row
+  # reviewed — so it lives on a real column, not in extra.
+  scope :needs_review, -> { where(needs_review: true) }
+  scope :excluding_needs_review, -> { where(needs_review: false) }
+
+  def mark_reviewed!
+    update!(needs_review: false)
+  end
+
+  def mark_needs_review!
+    update!(needs_review: true)
+  end
+
   # SQL snippet for raw queries that must exclude pending transactions.
   # Use in income statements, balance sheets, and raw analytics.
   def self.pending_providers_sql(table_alias = "t")

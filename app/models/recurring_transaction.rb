@@ -349,6 +349,30 @@ class RecurringTransaction < ApplicationRecord
     amount_money * (schedule.occurrences_per_year / 12.0)
   end
 
+  # Expected monthly recurring spend for a set of series, in the family's
+  # currency: each active outflow row's monthly_equivalent_amount converted
+  # and summed. Suggested, paused, inactive and income rows never count --
+  # suggestions are not commitments, and income is money in rather than
+  # spend (its amount is negative anyway, so `positive?` covers it).
+  # Returns [ Money total, counted row count, unconvertible row count ] so
+  # callers can caption the figure and flag it partial when a series'
+  # currency has no exchange rate.
+  def self.monthly_spend_total(series_list, currency:)
+    unconvertible = 0
+    spendable = series_list.select { |series| series.active? && series.amount.positive? }
+
+    total = spendable.reduce(Money.new(0, currency)) do |sum, series|
+      begin
+        sum + series.monthly_equivalent_amount.exchange_to(currency)
+      rescue Money::ConversionError
+        unconvertible += 1
+        sum
+      end
+    end
+
+    [ total, spendable.size, unconvertible ]
+  end
+
   # The newest price changes, most recent first. Sorts in Ruby when a caller
   # preloaded the association so the detail panel costs no extra query.
   def recent_price_changes(count = 5)

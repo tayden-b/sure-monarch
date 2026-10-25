@@ -79,6 +79,10 @@ class TransactionsController < ApplicationController
       Current.accessible_entries.uncategorized_transactions.count
     end
 
+    @needs_review_count = Rails.cache.fetch(needs_review_count_cache_key) do
+      accessible_transactions.needs_review.count
+    end
+
     # Load projected recurring transactions for next 10 days. Only the IDs are
     # cached: cached ActiveRecord objects outlive schema changes across
     # upgrades and raise MissingAttributeError for columns added since.
@@ -432,6 +436,20 @@ class TransactionsController < ApplicationController
     redirect_back_or_to transactions_path
   end
 
+  def toggle_review
+    transaction = accessible_transactions.includes(entry: :account).find(params[:id])
+
+    return unless require_account_permission!(transaction.entry.account, :annotate, redirect_path: transaction_path(transaction))
+
+    # Deliberately not mark_user_modified!: needs_review is workflow state,
+    # not user-edited transaction data, so resolving review shouldn't lock
+    # the row against provider sync.
+    transaction.update!(needs_review: !transaction.needs_review?)
+
+    flash[:notice] = transaction.needs_review? ? t("transactions.toggle_review.flagged") : t("transactions.toggle_review.reviewed")
+    redirect_back_or_to transaction_path(transaction), status: :see_other
+  end
+
   def mark_as_recurring
     transaction = accessible_transactions.includes(entry: :account).find(params[:id])
 
@@ -519,6 +537,16 @@ class TransactionsController < ApplicationController
     def uncategorized_count_cache_key
       "transactions_uncategorized_count/v4/#{Current.family.id}/#{Current.user.id}/" \
         "#{Current.family.entries_version}/#{Current.family.accounts_status_version}/#{Current.account_share_version}"
+    end
+
+    # Flag toggles update transactions.updated_at, not entries, so this key is
+    # versioned on the transactions table (mirroring Family#entries_version)
+    # rather than entries_version — otherwise marking a row reviewed would
+    # leave a stale queue count until the next unrelated entry write.
+    def needs_review_count_cache_key
+      "transactions_needs_review_count/v1/#{Current.family.id}/#{Current.user.id}/" \
+        "#{Current.family.transactions.count}-#{Current.family.transactions.maximum(:updated_at)&.to_f}/" \
+        "#{Current.family.accounts_status_version}/#{Current.account_share_version}"
     end
 
     # Scoped additionally by Date.current since the "next 10 days" window is
@@ -715,7 +743,7 @@ class TransactionsController < ApplicationController
                 :start_date, :end_date, :search, :amount,
                 :amount_operator, :active_accounts_only,
                 accounts: [], account_ids: [],
-                categories: [], merchants: [], types: [], tags: [], status: [], ai_status: []
+                categories: [], merchants: [], types: [], tags: [], status: [], ai_status: [], review_status: []
               )
               .to_h
               .compact_blank
@@ -725,6 +753,11 @@ class TransactionsController < ApplicationController
       if cleaned_params[:ai_status]
         cleaned_params[:ai_status] &= Transaction::Search::AI_STATUSES
         cleaned_params.delete(:ai_status) if cleaned_params[:ai_status].empty?
+      end
+
+      if cleaned_params[:review_status]
+        cleaned_params[:review_status] &= Transaction::Search::REVIEW_STATUSES
+        cleaned_params.delete(:review_status) if cleaned_params[:review_status].empty?
       end
 
       cleaned_params
