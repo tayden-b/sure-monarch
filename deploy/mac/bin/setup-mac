@@ -131,17 +131,16 @@ docker compose build
 step "Starting the stack"
 docker compose up -d
 
-step "Preparing the database"
-# bin/docker-entrypoint already runs db:prepare on web boot; run again so this
-# script works even after the container was already up.
-docker compose exec -T web bin/rails db:prepare
-
 # ---------------------------------------------------------------------------
-# 5. Wait for health
+# 5. Wait for health — BEFORE running our own db:prepare below. The web
+# entrypoint already runs `bin/rails db:prepare` before Puma boots, so a
+# healthy /up means that first prepare has finished. Running a second
+# db:prepare while it is still loading the schema races it and dies with
+# PG::DuplicateObject (both see an uninitialized DB and both run schema:load).
 # ---------------------------------------------------------------------------
 PORT="$(get_env PORT)"; PORT="${PORT:-3000}"
 step "Waiting for http://localhost:${PORT}/up"
-for _ in $(seq 1 60); do
+for _ in $(seq 1 90); do
   if curl -fsS "http://localhost:${PORT}/up" >/dev/null 2>&1; then
     break
   fi
@@ -149,6 +148,12 @@ for _ in $(seq 1 60); do
 done
 curl -fsS "http://localhost:${PORT}/up" >/dev/null 2>&1 \
   || die "App did not become healthy. Check: docker compose logs web"
+
+step "Preparing the database"
+# Safe now that /up is healthy: the DB is initialized so this is a no-op on a
+# fresh boot, and it applies pending migrations on re-runs where the entrypoint
+# prepare did not run (e.g. config-only restarts).
+docker compose exec -T web bin/rails db:prepare
 
 # ---------------------------------------------------------------------------
 # 6. URLs

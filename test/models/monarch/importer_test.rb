@@ -269,6 +269,37 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal 25_000, balance.cash_balance
   end
 
+  test "accounts without balance history keep their signed balance after materialization" do
+    import = run_import
+    assert import.complete?
+
+    # The archive carries balance_history for only 4 accounts; the rest have
+    # a signedBalance but no daily history. Each must get an anchor valuation
+    # so the materializer doesn't zero them out.
+    {
+      "acc-401k"      => 80_000,
+      "acc-ira"       => 15_000,
+      "acc-roth"      => 9_000,
+      "acc-hsa"       => 4_100,
+      "acc-pension"   => 21_000,
+      "acc-hidden"    => 200,   # liability abs()'d, per positive-liability convention
+      "acc-hidden-only" => 500,
+      "acc-crypto"    => 3_200
+    }.each do |monarch_id, expected|
+      account = @family.accounts.find(mapping_for("accounts", monarch_id).record_id)
+      assert_equal expected, account.balance.to_f, "#{monarch_id} balance"
+    end
+
+    # Anchored accounts expose a materialized balance at the current date.
+    account = @family.accounts.find(mapping_for("accounts", "acc-401k").record_id)
+    assert_equal 80_000, account.balances.find_by(date: Date.current).balance
+
+    # Re-importing must not create a second valuation for anchored accounts.
+    assert_no_difference -> { Entry.where(entryable_type: "Valuation").count } do
+      run_import
+    end
+  end
+
   test "recurring streams map frequency and sign" do
     run_import
 

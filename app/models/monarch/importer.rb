@@ -89,6 +89,7 @@ class Monarch::Importer
         import_goals
         import_transactions
         import_balance_history
+        anchor_accounts_without_history
         import_holdings
         import_rules
         import_recurring_streams
@@ -591,6 +592,35 @@ class Monarch::Importer
         rescue ActiveRecord::RecordInvalid => e
           report.error("balance_history", "#{r["account_id"]}:#{date}", e.message)
         end
+      end
+    end
+
+    # Accounts with no balance_history rows still carry a signedBalance. The
+    # forward materializer recomputes balances from the opening anchor, which
+    # an entry-less account lacks, and would overwrite the imported balance
+    # with 0. Write one reconciliation valuation at the current date so every
+    # imported account anchors to its Monarch balance.
+    #
+    # Not counted in the report: these are internal anchors and the
+    # balance_history counts must keep matching the archive's row count.
+    def anchor_accounts_without_history
+      MonarchSourceMapping.where(family: family, collection: "accounts").find_each do |mapping|
+        account = family.accounts.find_by(id: mapping.record_id)
+        next unless account
+        next if account.entries.where(entryable_type: "Valuation").exists?
+
+        entry = account.entries.find_or_initialize_by(
+          source: SOURCE,
+          external_id: "anchor:#{mapping.monarch_id}"
+        )
+        entry.entryable ||= Valuation.new(kind: "reconciliation")
+        entry.assign_attributes(
+          date: Date.current,
+          amount: account.balance || 0,
+          currency: account.currency,
+          name: Valuation.build_reconciliation_name(account.accountable_type)
+        )
+        entry.save!
       end
     end
 
