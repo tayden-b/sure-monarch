@@ -300,6 +300,29 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     end
   end
 
+  test "anchor follows a changed signed balance on re-import" do
+    run_import
+
+    # A "newer archive": same fixture but acc-401k's balance changed.
+    Dir.mktmpdir do |dir|
+      FileUtils.cp_r("#{ARCHIVE}/.", dir)
+      accounts_path = File.join(dir, "import", "accounts.json")
+      accounts = JSON.parse(File.read(accounts_path))
+      accounts.find { |a| a["id"] == "acc-401k" }.merge!(
+        "signedBalance" => 85_000, "displayBalance" => 85_000, "currentBalance" => 85_000
+      )
+      File.write(accounts_path, JSON.pretty_generate(accounts))
+
+      Monarch::Importer.new(family: @family, archive_path: dir, io: File.open(File::NULL, "w")).run
+    end
+
+    account = @family.accounts.find(mapping_for("accounts", "acc-401k").record_id)
+    assert_equal 85_000, account.balance.to_f
+
+    anchor = account.entries.find_by(source: "monarch", external_id: "anchor:acc-401k")
+    assert_equal 85_000, anchor.amount.to_f
+  end
+
   test "recurring streams map frequency and sign" do
     run_import
 

@@ -607,9 +607,20 @@ class Monarch::Importer
       MonarchSourceMapping.where(family: family, collection: "accounts").find_each do |mapping|
         account = family.accounts.find_by(id: mapping.record_id)
         next unless account
-        next if account.entries.where(entryable_type: "Valuation").exists?
 
-        entry = account.entries.find_or_initialize_by(
+        anchor = account.entries.find_by(
+          source: SOURCE,
+          external_id: "anchor:#{mapping.monarch_id}"
+        )
+        # Skip when real valuation entries exist (balance_history or a
+        # provider's own valuations) — but not when only our own anchor does:
+        # on re-import the anchor must re-anchor to the newer signedBalance or
+        # materialization would revert the balance to the stale amount.
+        real_valuations = account.entries.where(entryable_type: "Valuation")
+        real_valuations = real_valuations.where.not(id: anchor.id) if anchor
+        next if real_valuations.exists?
+
+        entry = anchor || account.entries.build(
           source: SOURCE,
           external_id: "anchor:#{mapping.monarch_id}"
         )
