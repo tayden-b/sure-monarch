@@ -673,13 +673,16 @@ class Demo::Generator
       end
     end
 
+    # VTI is bought in both the 401k and the brokerage account so the family
+    # holdings page has a security to aggregate across accounts; Roth and the
+    # ISA get their own funds so the allocation view has several slices.
     def generate_investment_transactions!
-      security = Security.first || Security.create!(ticker: "VTI", name: "Vanguard Total Stock Market ETF", country_code: "US")
+      fallback = Security.first || Security.create!(ticker: "VTI", name: "Vanguard Total Stock Market ETF", country_code: "US")
 
-      generate_401k_trades!(security)
-      generate_brokerage_trades!(security)
-      generate_roth_trades!(security)
-      generate_uk_isa_trades!(security)
+      generate_401k_trades!(Security.find_by(ticker: "VTI") || fallback)
+      generate_brokerage_trades!(Security.find_by(ticker: "VTI") || fallback)
+      generate_roth_trades!(Security.find_by(ticker: "VXUS") || fallback)
+      generate_uk_isa_trades!(Security.find_by(ticker: "BND") || fallback)
     end
 
     # ---------------------------------------------------- 401k (180 trades) --
@@ -734,11 +737,14 @@ class Demo::Generator
 
     # --------------------------- Helpers for investment trade generation -----
     def collect_payroll_dates
+      # Stepping 14 days from a Friday already lands on every other Friday;
+      # gating on ISO week parity filters all of them out half of the time
+      # (a +14d stride never changes the parity of the week it lands in).
       dates = []
       d = 36.months.ago.to_date
       d += 1 until d.friday?
       while d <= Date.current
-        dates << d if d.cweek.even?
+        dates << d
         d += 14 # next bi-weekly
       end
       dates
@@ -1027,9 +1033,9 @@ class Demo::Generator
       return if Security.exists?
 
       Security.create!([
-        { ticker: "VTI", name: "Vanguard Total Stock Market ETF", country_code: "US" },
-        { ticker: "VXUS", name: "Vanguard Total International Stock ETF", country_code: "US" },
-        { ticker: "BND", name: "Vanguard Total Bond Market ETF", country_code: "US" }
+        { ticker: "VTI", name: "Vanguard Total Stock Market ETF", country_code: "US", asset_class: "equity", asset_sub_class: "etf" },
+        { ticker: "VXUS", name: "Vanguard Total International Stock ETF", country_code: "US", asset_class: "equity", asset_sub_class: "etf" },
+        { ticker: "BND", name: "Vanguard Total Bond Market ETF", country_code: "US", asset_class: "fixed_income", asset_sub_class: "bond" }
       ])
     end
 

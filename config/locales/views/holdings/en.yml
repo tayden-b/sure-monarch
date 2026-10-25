@@ -53,6 +53,70 @@ en:
         other: "%{count} positions"
       return: Total return
       weight: Weight
+    portfolio:
+      title: Holdings
+      subtitle: Every security the family holds, aggregated across investment accounts.
+      portfolio_value: Portfolio value
+      invested: Invested
+      cash: Cash
+      total_return: Total return
+      day_change: Day change
+      no_data: "--"
+      no_cost_basis: No cost basis
+      allocation: Allocation
+      allocation_note: Slices are shares of invested value and total 100%. Uninvested account cash is not a position and is excluded.
+      asset_class: Asset class
+      value: Value
+      weight: Weight
+      holdings: Holdings
+      name: Name
+      qty: Qty
+      average_cost: Average cost
+      return: Total return
+      account_count:
+        one: "%{count} account"
+        other: "%{count} accounts"
+      no_holdings: No holdings to show.
+      no_accounts_title: No investment accounts yet
+      no_accounts_body: Connect or add an investment account to see aggregate holdings and allocation.
+      asset_classes:
+        alternative_investment: Alternative investment
+        commodity: Commodity
+        equity: Equity
+        fixed_income: Fixed income
+        liquidity: Liquidity
+        real_estate: Real estate
+        cash: Cash
+        unclassified: Unclassified
+      asset_sub_classes:
+        bond: Bond
+        cash: Cash
+        collectible: Collectible
+        commodity: Commodity
+        cryptocurrency: Cryptocurrency
+        etf: ETF
+        loan: Loan
+        mutual_fund: Mutual fund
+        precious_metal: Precious metal
+        private_equity: Private equity
+        real_estate: Real estate
+        stock: Stock
+        unclassified: Unclassified
+    security:
+      overview: Overview
+      shares_label: Shares
+      market_value_label: Market value
+      portfolio_weight_label: Portfolio Weight
+      avg_cost_label: Average cost
+      total_return_label: Total return
+      unknown: Unknown
+      account: Account
+      qty: Qty
+      value: Value
+      accounts_section:
+        one: "%{count} account"
+        other: "%{count} accounts"
+      currency_note: All figures in %{currency} (family currency).
     missing_price_tooltip:
       description: This investment has missing values and we could not calculate
         its returns or value.

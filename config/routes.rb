@@ -524,6 +524,9 @@ Rails.application.routes.draw do
   end
 
   resources :holdings, only: %i[index new show update destroy] do
+    collection do
+      get "securities/:security_id", action: :security, as: :security
+    end
     member do
       post :unlock_cost_basis
       patch :remap_security
