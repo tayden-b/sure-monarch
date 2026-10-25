@@ -123,6 +123,55 @@ class InvestmentStatement
     end
   end
 
+  # Every security the family holds, rolled up across investment accounts with
+  # the per-account positions behind each row, for the family holdings page.
+  # Amounts are converted to family currency; weights share the denominator of
+  # top_holdings/allocation so the same security cannot report two percentages.
+  def aggregate_holdings
+    rolled_up = holdings_rolled_up_by_security
+    return [] if rolled_up.empty?
+
+    total = weight_denominator(rolled_up.sum { |_, value, _| value })
+
+    rolled_up.map do |security, value, holdings|
+      AggregateHolding.new(
+        security: security,
+        positions: aggregate_positions(holdings),
+        total_qty: holdings.sum(&:qty),
+        amount: Money.new(value, family.currency),
+        weight: (value / total * 100).round(2),
+        avg_cost: aggregate_avg_cost(holdings),
+        trend: combined_holding_trend(holdings)
+      )
+    end
+  end
+
+  # Invested holdings value grouped by securities.asset_class (+ sub_class for
+  # the drill-down). Weights are shares of total invested value, so they sum
+  # to 100: uninvested account cash is not a position and is not a slice.
+  # Cash-kind securities (Security#cash?, e.g. synthetic CASH-* positions)
+  # get their own "cash" slice; an unclassified security lands in
+  # "unclassified" rather than disappearing or misreporting a class.
+  def asset_class_allocation
+    rolled_up = holdings_rolled_up_by_security
+    total = rolled_up.sum { |_, value, _| value }
+    return [] if total.zero?
+
+    rolled_up
+      .group_by { |security, _, _| allocation_class_key(security) }
+      .map do |class_key, rows|
+        class_value = rows.sum { |_, value, _| value }
+        AllocationSlice.new(
+          key: class_key,
+          amount: Money.new(class_value, family.currency),
+          weight: (class_value / total * 100).round(2),
+          securities: rows.map(&:first),
+          sub_slices: allocation_sub_slices(rows, total)
+        )
+      end
+      .sort_by { |slice| -slice.amount.amount }
+  end
+
   # Unrealized gains across all holdings, summed in family currency
   def unrealized_gains
     current_holdings.sum do |holding|
@@ -316,6 +365,27 @@ class InvestmentStatement
       def amount_money = amount
     end
 
+    # One row of the family holdings page: the security, the rolled-up totals,
+    # and the per-account positions behind it. `amount`, `avg_cost` and every
+    # position figure are Money in family currency; `trend` is the unrealized
+    # gain over the positions whose cost basis is known (nil when none is).
+    AggregateHolding = Data.define(:security, :positions, :total_qty, :amount, :weight, :avg_cost, :trend) do
+      def ticker = security.ticker
+      def name = security.name.presence || ticker
+      def amount_money = amount
+      def account_count = positions.size
+    end
+
+    # One account's lot inside an AggregateHolding. `account` is the owning
+    # Account so the drill-down can link back to the account's holdings tab.
+    AggregatePosition = Data.define(:account, :qty, :amount, :avg_cost, :trend)
+
+    # One asset-class (or sub-class) bucket of asset_class_allocation.
+    # `key` is the raw classification ("equity", "unclassified", "cash", ...)
+    # for the view to translate; `securities` are the positions' securities
+    # in the bucket for drill-down display.
+    AllocationSlice = Data.define(:key, :amount, :weight, :securities, :sub_slices)
+
     # Groups current holdings by security and sums family-currency value.
     # Returns [[security, value, holdings], ...] sorted by value descending.
     # Callers that need return trends should call combined_holding_trend only
@@ -373,6 +443,93 @@ class InvestmentStatement
         current: Money.new(currents.sum, family.currency),
         previous: Money.new(previouses.sum, family.currency)
       )
+    end
+
+    # Per-account positions behind one rolled-up security, largest first.
+    # Every figure is converted to family currency so positions held in
+    # different account currencies compare on the same line.
+    def aggregate_positions(holdings)
+      holdings
+        .map do |holding|
+          AggregatePosition.new(
+            account: holding.account,
+            qty: holding.qty,
+            amount: Money.new(convert_to_family_currency(holding.amount, holding.currency), family.currency),
+            avg_cost: converted_avg_cost(holding),
+            trend: converted_trend(holding)
+          )
+        end
+        .sort_by { |position| -position.amount.amount }
+    end
+
+    # Weighted per-share cost over the positions whose cost basis is known.
+    # Positions with an unknown basis are left out of both the cost total and
+    # the quantity divisor — folding them in at 0 would understate the figure
+    # and pretending their basis is known would fabricate it.
+    def aggregate_avg_cost(holdings)
+      basis_qty = BigDecimal("0")
+      basis_cost = BigDecimal("0")
+
+      holdings.each do |holding|
+        avg_cost = holding.avg_cost
+        next unless avg_cost
+
+        basis_qty += holding.qty
+        basis_cost += convert_to_family_currency(holding.qty * avg_cost.amount, holding.currency)
+      end
+
+      return nil unless basis_qty.positive?
+
+      Money.new(basis_cost / basis_qty, family.currency)
+    end
+
+    def converted_avg_cost(holding)
+      avg_cost = holding.avg_cost
+      return nil unless avg_cost
+
+      Money.new(convert_to_family_currency(avg_cost.amount, holding.currency), family.currency)
+    end
+
+    # Holding#trend is denominated in the holding's currency; the family page
+    # needs every figure in family currency.
+    def converted_trend(holding)
+      trend = holding.trend
+      return nil unless trend
+
+      Trend.new(
+        current: Money.new(convert_to_family_currency(trend.current.amount, holding.currency), family.currency),
+        previous: Money.new(convert_to_family_currency(trend.previous.amount, holding.currency), family.currency)
+      )
+    end
+
+    # "cash" is a pseudo-class: kind="cash" securities are cash positions the
+    # pipeline represents as holdings (issue #1809), not asset-class members.
+    def allocation_class_key(security)
+      return "cash" if security.cash?
+
+      security.asset_class.presence || "unclassified"
+    end
+
+    def allocation_sub_class_key(security)
+      return "cash" if security.cash?
+
+      security.asset_sub_class.presence || "unclassified"
+    end
+
+    def allocation_sub_slices(rows, total)
+      rows
+        .group_by { |security, _, _| allocation_sub_class_key(security) }
+        .map do |sub_key, sub_rows|
+          sub_value = sub_rows.sum { |_, value, _| value }
+          AllocationSlice.new(
+            key: sub_key,
+            amount: Money.new(sub_value, family.currency),
+            weight: (sub_value / total * 100).round(2),
+            securities: sub_rows.map(&:first),
+            sub_slices: []
+          )
+        end
+        .sort_by { |slice| -slice.amount.amount }
     end
 
     def investment_account_ids

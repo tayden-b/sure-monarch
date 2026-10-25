@@ -4,10 +4,33 @@ class HoldingsController < ApplicationController
   before_action :set_holding, only: %i[show update destroy unlock_cost_basis remap_security reset_security sync_prices]
   before_action :require_holding_write_permission!, only: %i[update destroy unlock_cost_basis remap_security reset_security sync_prices]
 
+  # With account_id this is the per-account holdings tab (turbo frame); without
+  # it, the family-level page Monarch calls Holdings: every security rolled up
+  # across accounts plus the asset-class allocation.
   def index
-    @account = accessible_accounts.find(params[:account_id])
-    @current_holdings = @account.current_holdings
-    @trade_republic_categories = trade_republic_categories_for(@account)
+    if params[:account_id].present?
+      @account = accessible_accounts.find(params[:account_id])
+      @current_holdings = @account.current_holdings
+      @trade_republic_categories = trade_republic_categories_for(@account)
+    else
+      @investment_statement = InvestmentStatement.new(Current.family, user: Current.user)
+      @aggregate_holdings = @investment_statement.aggregate_holdings
+      @allocation = @investment_statement.asset_class_allocation
+      render :portfolio
+    end
+  end
+
+  # Per-security drill-down for the family holdings page: which accounts hold
+  # the security and each position's qty/value/cost basis. Scoped through
+  # InvestmentStatement so a security the family only holds in an account the
+  # user cannot count in their finances is a 404, not a partial leak.
+  def security
+    @aggregate = InvestmentStatement
+      .new(Current.family, user: Current.user)
+      .aggregate_holdings
+      .find { |row| row.security.id.to_s == params[:security_id].to_s }
+
+    raise ActiveRecord::RecordNotFound unless @aggregate
   end
 
   def show

@@ -12,6 +12,58 @@ class HoldingsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "gets family holdings page with an aggregate row per security" do
+    second_account = @account.family.accounts.create!(
+      name: "Second Brokerage", balance: 500, currency: @account.currency,
+      accountable: Investment.new
+    )
+
+    Holding.create!(
+      account: second_account, security: @holding.security, date: Date.current,
+      qty: 5, price: @holding.price, amount: 5 * @holding.price, currency: @account.currency
+    )
+
+    get holdings_url
+
+    assert_response :success
+    assert_match(/#{Regexp.escape(@holding.security.ticker)}/, response.body)
+    # the same security rolls up into one row that reports both accounts
+    assert_match(/2 accounts/, response.body)
+  end
+
+  test "family holdings page hides securities only held in excluded accounts" do
+    excluded_security = securities(:msft)
+    excluded_account = @account.family.accounts.create!(
+      name: "Excluded", balance: 500, currency: "USD",
+      exclude_from_reports: true, accountable: Investment.new
+    )
+
+    Holding.create!(
+      account: excluded_account, security: excluded_security, date: Date.current,
+      qty: 5, price: 100, amount: 500, currency: "USD"
+    )
+
+    get holdings_url
+
+    assert_response :success
+    assert_no_match(/#{Regexp.escape(excluded_security.ticker)}/, response.body)
+  end
+
+  test "gets per-security drill-down across accounts" do
+    get security_holdings_url(security_id: @holding.security.id)
+
+    assert_response :success
+    assert_select "h3", text: @holding.security.name
+  end
+
+  test "drill-down is not found for a security the family does not hold" do
+    foreign_security = securities(:msft)
+
+    get security_holdings_url(security_id: foreign_security.id)
+
+    assert_response :not_found
+  end
+
   test "gets holding" do
     get holding_path(@holding)
 
