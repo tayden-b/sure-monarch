@@ -23,7 +23,7 @@ class Budget < ApplicationRecord
   monetize :budgeted_spending, :expected_income, :allocated_spending,
            :actual_spending, :available_to_spend, :available_to_allocate,
            :estimated_spending, :estimated_income, :actual_income, :remaining_expected_income,
-           :total_rolled_over
+           :total_rolled_over, :flex_spending, :flex_actual_spending, :flex_available_to_spend
 
   class << self
     def date_to_param(date)
@@ -296,7 +296,8 @@ class Budget < ApplicationRecord
     Budget.transaction do
       update!(
         budgeted_spending: source_budget.budgeted_spending,
-        expected_income: source_budget.expected_income
+        expected_income: source_budget.expected_income,
+        flex_spending: source_budget.flex_spending
       )
 
       target_by_category = budget_categories.index_by(&:category_id)
@@ -454,7 +455,7 @@ class Budget < ApplicationRecord
   end
 
   def available_to_allocate
-    (budgeted_spending || 0) - allocated_spending
+    (budgeted_spending || 0) - allocated_spending - (flex_spending || 0)
   end
 
   # Informational aggregate only -- deliberately kept out of
@@ -468,6 +469,61 @@ class Budget < ApplicationRecord
 
   def allocations_valid?
     initialized? && available_to_allocate >= 0 && allocated_spending > 0
+  end
+
+  # =============================================================================
+  # Flex budget (Monarch's "flex number"): one discretionary pool inside
+  # `budgeted_spending` for spend no category envelope claims. It is an earmark
+  # of the month's total, not an amount on top of it, so it is subtracted from
+  # `available_to_allocate` above. Actuals reuse the same IncomeStatement
+  # totals (purpose: :budget) as every other number on the page.
+  # =============================================================================
+  def flex_configured?
+    flex_spending.present?
+  end
+
+  # Outflows in categories carrying no envelope this month, plus the
+  # synthetic Uncategorized bucket. A category counts as covered when
+  # `budgeted?` — a stored allocation or a rollover carrying the envelope.
+  # Testing top-level rows only is sufficient: a parent's actual already rolls
+  # its subcategories up, and a funded child always leaves the parent funded
+  # too (sync_parent_budgeted_spending! rebuilds it from children + reserve).
+  def flex_actual_spending
+    budget_categories
+      .reject(&:subcategory?)
+      .reject(&:budgeted?)
+      .sum { |bc| budget_category_actual_spending(bc) } +
+      budget_category_actual_spending(uncategorized_budget_category)
+  end
+
+  def flex_available_to_spend
+    (flex_spending || 0) - flex_actual_spending
+  end
+
+  def flex_percent_spent
+    return 0 unless flex_spending&.positive?
+
+    (flex_actual_spending / flex_spending.to_f) * 100
+  end
+
+  def flex_overage_percent
+    return 0 unless flex_available_to_spend.negative?
+
+    flex_available_to_spend.abs / flex_actual_spending.to_f * 100
+  end
+
+  # Same per-day pacing as BudgetCategory#suggested_daily_spending.
+  def flex_suggested_daily_spending
+    return nil unless flex_available_to_spend > 0
+    return nil unless current?
+
+    days_remaining = self.days_remaining
+    return nil unless days_remaining > 0
+
+    {
+      amount: Money.new(flex_available_to_spend / days_remaining, family.currency),
+      days_remaining: days_remaining
+    }
   end
 
   # =============================================================================

@@ -127,6 +127,32 @@ class BudgetsControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?]", plan_path, count: 0
     assert_select "a[href=?]", budgets_path, minimum: 1
   end
+
+  test "show renders the flex card on an initialized budget" do
+    get budget_url(Budget.date_to_param(Date.current))
+
+    assert_response :success
+    assert_match I18n.t("budgets.flex_budget.heading"), response.body
+  end
+
+  test "update_flex sets the month's flex amount" do
+    budget = budgets(:one)
+
+    patch update_flex_budget_url(budget), params: { budget: { flex_spending: 250 } }, as: :turbo_stream
+
+    assert_response :success
+    assert_equal 250, budget.reload.flex_spending
+    assert_includes @response.body, dom_id(budget, :flex_budget)
+  end
+
+  test "update accepts flex_spending from the setup wizard" do
+    budget = budgets(:one)
+
+    patch budget_url(budget), params: { budget: { budgeted_spending: 1000, expected_income: 2000, flex_spending: 300 } }
+
+    assert_response :redirect
+    assert_equal 300, budget.reload.flex_spending
+  end
   # --- Lot A3: cash on hand ---
 
   test "the cash panel is hidden without preview access" do
@@ -217,5 +243,16 @@ class BudgetsControllerSharingTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to budget_budget_categories_url(Budget.date_to_param(@date), owner: @owner.id)
     assert_equal 1000, Budget.find_by(family: @family, user: @owner).budgeted_spending.to_i
+  end
+
+  test "a read_only BudgetShare cannot update flex" do
+    Budget.find_or_bootstrap(@family, start_date: @date, user: @owner)
+    BudgetShare.create!(owner: @owner, viewer: @viewer, permission: "read_only")
+    sign_in @viewer
+
+    patch update_flex_budget_url(Budget.date_to_param(@date), params: { owner: @owner.id }),
+          params: { budget: { flex_spending: 250 } }
+
+    assert_response :not_found
   end
 end

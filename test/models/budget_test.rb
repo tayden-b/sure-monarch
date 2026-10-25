@@ -626,4 +626,134 @@ class BudgetTest < ActiveSupport::TestCase
       assert_equal 0, budget.days_remaining
     end
   end
+
+  # --- Flex budget ---
+
+  test "flex_actual_spending counts unbudgeted-category and uncategorized spend only" do
+    family = families(:empty)
+    account = Account.create!(
+      family: family, accountable: Depository.new, name: "Checking",
+      status: "active", currency: "USD", balance: 0
+    )
+
+    budgeted_cat = Category.create!(name: "Flex budgeted", family: family, color: "#111111")
+    unbudgeted_cat = Category.create!(name: "Flex unbudgeted", family: family, color: "#222222")
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+    budget.budget_categories.find_by(category: budgeted_cat).update!(budgeted_spending: 100)
+
+    Entry.create!(account: account, entryable: Transaction.create!(category: budgeted_cat),
+                  date: Date.current, name: "Budgeted spend", amount: 50, currency: "USD")
+    Entry.create!(account: account, entryable: Transaction.create!(category: unbudgeted_cat),
+                  date: Date.current, name: "Unbudgeted spend", amount: 70, currency: "USD")
+    Entry.create!(account: account, entryable: Transaction.create!(category: nil),
+                  date: Date.current, name: "Uncategorized spend", amount: 30, currency: "USD")
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 100, budget.flex_actual_spending
+  end
+
+  test "flex_actual_spending excludes rollover-funded categories" do
+    family = families(:empty)
+    account = Account.create!(
+      family: family, accountable: Depository.new, name: "Checking",
+      status: "active", currency: "USD", balance: 0
+    )
+    category = Category.create!(name: "Flex rollover", family: family, color: "#333333")
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+    bc = budget.budget_categories.find_by(category: category)
+    bc.update!(rollover_enabled: true)
+    bc.update_column(:rolled_over_amount, 80)
+
+    Entry.create!(account: account, entryable: Transaction.create!(category: category),
+                  date: Date.current, name: "Rollover-funded spend", amount: 60, currency: "USD")
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 0, budget.flex_actual_spending
+  end
+
+  test "flex_actual_spending skips hide_in_budget accounts" do
+    family = families(:empty)
+    hidden_account = Account.create!(
+      family: family, accountable: Depository.new, name: "Hidden",
+      status: "active", currency: "USD", balance: 0, hide_in_budget: true
+    )
+    visible_account = Account.create!(
+      family: family, accountable: Depository.new, name: "Visible",
+      status: "active", currency: "USD", balance: 0
+    )
+    category = Category.create!(name: "Flex hidden", family: family, color: "#444444")
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+
+    Entry.create!(account: hidden_account, entryable: Transaction.create!(category: category),
+                  date: Date.current, name: "Hidden spend", amount: 400, currency: "USD")
+    Entry.create!(account: visible_account, entryable: Transaction.create!(category: category),
+                  date: Date.current, name: "Visible spend", amount: 75, currency: "USD")
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 75, budget.flex_actual_spending
+  end
+
+  test "flex_actual_spending excludes transfer kinds" do
+    family = families(:empty)
+    account = Account.create!(
+      family: family, accountable: Depository.new, name: "Checking",
+      status: "active", currency: "USD", balance: 0
+    )
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+
+    Entry.create!(account: account,
+                  entryable: Transaction.create!(category: nil, kind: "funds_movement"),
+                  date: Date.current, name: "Transfer", amount: 250, currency: "USD")
+    Entry.create!(account: account, entryable: Transaction.create!(category: nil),
+                  date: Date.current, name: "Excluded spend", amount: 40, currency: "USD",
+                  excluded: true)
+    Entry.create!(account: account, entryable: Transaction.create!(category: nil),
+                  date: Date.current, name: "Counted spend", amount: 40, currency: "USD")
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 40, budget.flex_actual_spending
+  end
+
+  test "flex_spending is carved out of available_to_allocate" do
+    family = families(:empty)
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+    budget.update!(budgeted_spending: 1000, expected_income: 2000, flex_spending: 300)
+
+    budget.budget_categories.first.update!(budgeted_spending: 400) if budget.budget_categories.any?
+
+    assert_equal 1000 - 300 - budget.allocated_spending, budget.available_to_allocate
+  end
+
+  test "copy_from copies flex_spending" do
+    family = families(:empty)
+
+    source_budget = Budget.find_or_bootstrap(family, start_date: 2.months.ago)
+    source_budget.update!(budgeted_spending: 4000, expected_income: 6000, flex_spending: 750)
+
+    target_budget = Budget.find_or_bootstrap(family, start_date: 1.month.ago)
+    target_budget.copy_from!(source_budget)
+
+    assert_equal 750, target_budget.reload.flex_spending
+  end
+
+  test "flex pacing and availability math" do
+    family = families(:empty)
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+    budget.update!(budgeted_spending: 1000, flex_spending: 200)
+
+    assert_equal 200, budget.flex_available_to_spend
+    assert_equal 0, budget.flex_percent_spent
+
+    pacing = budget.flex_suggested_daily_spending
+    assert_not_nil pacing
+    assert_equal budget.days_remaining, pacing[:days_remaining]
+  end
 end

@@ -1,8 +1,8 @@
 class BudgetsController < ApplicationController
   include BudgetOwnership
 
-  before_action :set_budget, only: %i[show edit update copy_previous]
-  before_action :ensure_budget_editable!, only: %i[edit update copy_previous]
+  before_action :set_budget, only: %i[show edit update copy_previous update_flex]
+  before_action :ensure_budget_editable!, only: %i[edit update copy_previous update_flex]
 
   def index
     redirect_to_current_month_budget
@@ -22,6 +22,17 @@ class BudgetsController < ApplicationController
   def update
     @budget.update!(budget_params)
     redirect_to budget_budget_categories_path(@budget, **budget_owner_query)
+  end
+
+  # The flex card edits its one amount inline; keeping it out of `update`
+  # lets the setup wizard keep its own redirect.
+  def update_flex
+    @budget.update!(flex_params)
+
+    respond_to do |format|
+      format.turbo_stream
+      format.html { redirect_to budget_path(@budget, **budget_owner_query) }
+    end
   end
 
   def copy_previous
@@ -54,7 +65,11 @@ class BudgetsController < ApplicationController
     end
 
     def budget_params
-      params.require(:budget).permit(:budgeted_spending, :expected_income)
+      params.require(:budget).permit(:budgeted_spending, :expected_income, :flex_spending)
+    end
+
+    def flex_params
+      params.require(:budget).permit(:flex_spending)
     end
 
     def set_budget
