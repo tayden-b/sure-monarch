@@ -235,16 +235,38 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal mapping_for("tags", "tag-reimb").record_id.to_s, tags_action.value
   end
 
-  test "rules carry Monarch order into position" do
+  test "rules carry Monarch order into dense per-family positions" do
     run_import
 
-    assert_equal 0, mapping_for("rules", "rule-1").record.position
-    assert_equal 1, mapping_for("rules", "rule-2").record.position
-    assert_equal 2, mapping_for("rules", "rule-3").record.position
+    # Rule.reorder! writes dense 1..n positions (not Monarch's 0-based `order`)
+    assert_equal 1, mapping_for("rules", "rule-1").record.position
+    assert_equal 2, mapping_for("rules", "rule-2").record.position
+    assert_equal 3, mapping_for("rules", "rule-3").record.position
 
     ordered = @family.rules.where(id: MonarchSourceMapping.where(family: @family, collection: "rules").select(:record_id)).ordered
     assert_equal %w[rule-1 rule-2 rule-3],
       ordered.map { |r| MonarchSourceMapping.find_by(family: @family, collection: "rules", record: r).monarch_id }
+  end
+
+  test "investment account cash position reconciles into the balance without double-counting" do
+    import = run_import
+    assert import.complete?
+
+    # acc-brokerage: signedBalance 25000 with holdings AAPL 2550 + an explicit
+    # cash position of 500. The cash position must not be added on top of the
+    # total (double-counted into non-cash) nor dropped from the ledger.
+    account = @family.accounts.find(mapping_for("accounts", "acc-brokerage").record_id)
+    assert_equal 25_000, account.balance
+    assert_equal 25_000, account.cash_balance
+
+    cash_holding = account.holdings.joins(:security).find_by(securities: { kind: "cash" })
+    assert_not_nil cash_holding, "the Monarch cash position should still import as a holding row"
+    assert_equal 500, cash_holding.amount
+
+    # On the cash holding's own date the position folds into cash, not on top.
+    balance = account.balances.find_by(date: cash_holding.date)
+    assert_equal 25_000, balance.balance
+    assert_equal 25_000, balance.cash_balance
   end
 
   test "recurring streams map frequency and sign" do

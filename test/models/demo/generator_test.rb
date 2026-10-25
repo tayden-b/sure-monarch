@@ -62,6 +62,30 @@ class Demo::GeneratorTest < ActiveSupport::TestCase
     assert_equal 1, ApiKey.where(display_key: ApiKey::DEMO_MONITORING_KEY).count
   end
 
+  # Transfer legs must carry transfer kinds (not "standard") so kind-filtered
+  # surfaces (budgets, uncategorized, transfer filters) treat them correctly.
+  # The destination account decides the outflow kind — the same convention as
+  # Family::AutoTransferMatchable / Transfer::Creator.
+  test "create_transfer! stamps transfer kinds from the destination account" do
+    generator = Demo::Generator.new(seed: 42)
+    checking = @family.accounts.create!(accountable: Depository.new, name: "Checking",
+                                        currency: "USD", balance: 5_000)
+    card = @family.accounts.create!(accountable: CreditCard.new, name: "Card",
+                                    currency: "USD", balance: 0)
+    savings = @family.accounts.create!(accountable: Depository.new, name: "Savings",
+                                       currency: "USD", balance: 1_000)
+
+    generator.send(:create_transfer!, checking, card, 100, "Card Payment", Date.current)
+    payment = Transfer.order(:created_at, :id).last
+    assert_equal "cc_payment", payment.outflow_transaction.kind
+    assert_equal "funds_movement", payment.inflow_transaction.kind
+
+    generator.send(:create_transfer!, checking, savings, 50, "Savings Move", Date.current)
+    move = Transfer.order(:created_at, :id).last
+    assert_equal "funds_movement", move.outflow_transaction.kind
+    assert_equal "funds_movement", move.inflow_transaction.kind
+  end
+
   # Regression for a `rake demo_data:default` crash: the goal-seeding matrix
   # linked several active goals to the same account as a 100%-whole-account
   # claim each, which violates GoalAccount#whole_account_link_must_be_exclusive
