@@ -457,6 +457,7 @@ Rails.application.routes.draw do
 
   resources :budgets, only: %i[index show edit update], param: :month_year do
     post :copy_previous, on: :member
+    patch :update_flex, on: :member
     get :picker, on: :collection
 
     resources :budget_categories, only: %i[index show update] do
