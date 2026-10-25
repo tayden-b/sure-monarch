@@ -15,6 +15,9 @@ en:
       edit: Edit
       re_apply_rule: Re-apply rule
       delete: Delete
+      move_up: Move rule up
+      move_down: Move rule down
+      reorder_aria_label: "Rule %{name}. Press Enter or Space to grab for reordering, then use arrow keys to move."
       then: THEN
       and_more_conditions:
         one: and 1 more condition
@@ -40,7 +43,9 @@ en:
       new_rule: New rule
       ai_cost_warning: AI-enabled rule actions will cost money.  Be sure to filter as narrowly as possible to avoid unnecessary costs.
       rules_heading: Rules
+      rules_list_aria_label: Rules by priority — first rule wins conflicting fields
       sort_by: "Sort by:"
+      sort_priority: Priority
       sort_name: Name
       sort_updated_at: Updated At
       toggle_sort_direction: Toggle sort direction
@@ -61,6 +66,8 @@ en:
     actions:
       to_label: to
       value_placeholder: Enter a value
+    move:
+      success: Rule order updated
     update:
       success: Rule updated
     destroy:

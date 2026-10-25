@@ -591,8 +591,9 @@ class Monarch::Importer
     # ------------------------------------------------------------------ rules
 
     # Monarch rules AND their criteria; Sure conditions are also ANDed.
-    # Order is preserved by importing in `order` sequence and recording it in
-    # the rule name (Sure has no explicit rule ordering field).
+    # Order is preserved twice: `order` is written to `rules.position` (the
+    # field ordered application reads), and echoed in the rule name so it
+    # still sorts sensibly when the list is viewed by name.
     def import_rules
       ordered = archive.records("rules")
       report.archive_count("rules", ordered.size)
@@ -611,6 +612,9 @@ class Monarch::Importer
       rule = rule_id ? family.rules.find_by(id: rule_id) : family.rules.new(resource_type: "transaction")
       rule.name = rule_name(r)
       rule.active = true
+      # Monarch's 0-based `order` is preserved verbatim; a rule without one
+      # keeps its current position, or gets the next slot on create.
+      rule.position = r["order"] if r["order"].present?
 
       rule.conditions.destroy_all if rule.persisted?
       rule.actions.destroy_all if rule.persisted?

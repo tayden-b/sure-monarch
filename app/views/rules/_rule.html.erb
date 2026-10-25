@@ -1,7 +1,55 @@
-<%# locals: (rule:) %>
-<div id="<%= dom_id(rule) %>" class="flex justify-between items-center p-4 <%= rule.active? ? "text-primary" : "text-secondary" %>">
+<%# locals: (rule:, reorderable: false) %>
+<div id="<%= dom_id(rule) %>"
+  class="flex justify-between items-center p-4 <%= rule.active? ? "text-primary" : "text-secondary" %>"
+  <% if reorderable %>
+    data-rules-sortable-target="section"
+    data-rule-id="<%= rule.id %>"
+    tabindex="0"
+    role="listitem"
+    aria-grabbed="false"
+    aria-label="<%= t(".reorder_aria_label", name: rule.name.presence || t("rules.recent_runs.unnamed_rule")) %>"
+    data-action="keydown->rules-sortable#handleKeyDown"
+  <% end %>>
 
-  <div class="text-sm space-y-1.5">
+  <% if reorderable %>
+    <div class="flex items-center gap-1 mr-3 shrink-0 self-stretch">
+      <span
+        class="cursor-grab active:cursor-grabbing text-secondary hover:text-primary p-1 -ml-1"
+        draggable="true"
+        data-rules-sortable-target="handle"
+        data-action="dragstart->rules-sortable#dragStart
+          dragend->rules-sortable#dragEnd
+          touchstart->rules-sortable#touchStart
+          touchmove->rules-sortable#touchMove
+          touchend->rules-sortable#touchEnd
+          touchcancel->rules-sortable#touchEnd"
+        aria-hidden="true">
+        <%= icon("grip-vertical", size: "sm") %>
+      </span>
+      <div class="flex flex-col">
+        <%= render DS::Link.new(
+          href: move_rule_path(rule, direction: "up"),
+          method: :patch,
+          variant: "icon",
+          icon: "chevron-up",
+          size: :sm,
+          title: t(".move_up"),
+          aria: { label: t(".move_up") }
+        ) %>
+        <%= render DS::Link.new(
+          href: move_rule_path(rule, direction: "down"),
+          method: :patch,
+          variant: "icon",
+          icon: "chevron-down",
+          size: :sm,
+          title: t(".move_down"),
+          aria: { label: t(".move_down") }
+        ) %>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="text-sm space-y-1.5 grow">
     <% if rule.name.present? %>
       <h3 class="font-medium text-md"><%= rule.name %></h3>
     <% end %>

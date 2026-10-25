@@ -1,4 +1,22 @@
 class Rule::Action < ApplicationRecord
+  # Field each action type writes, used by ordered application (Rule#apply's
+  # claimed_fields): two rules writing the same field conflict and the
+  # earlier-positioned rule wins. "set_transaction_tags" is intentionally
+  # absent — its executor merges tags rather than overwriting them, so tag
+  # actions never conflict. Side-effect-only actions (send_email_notification)
+  # have no field and always run.
+  CONFLICT_KEYS = {
+    "set_transaction_category" => :category_id,
+    "auto_categorize" => :category_id,
+    "set_transaction_merchant" => :merchant_id,
+    "auto_detect_merchants" => :merchant_id,
+    "set_transaction_name" => :name,
+    "set_investment_activity_label" => :investment_activity_label,
+    "exclude_transaction" => :excluded,
+    "set_as_transfer_or_payment" => :transfer,
+    "set_needs_review" => :needs_review
+  }.freeze
+
   belongs_to :rule, touch: true
 
   validates :action_type, presence: true
@@ -46,6 +64,12 @@ class Rule::Action < ApplicationRecord
 
   def apply(resource_scope, ignore_attribute_locks: false, rule_run: nil)
     executor.execute(resource_scope, value: execution_value, ignore_attribute_locks: ignore_attribute_locks, rule_run: rule_run) || 0
+  end
+
+  # The field this action claims under ordered application, or nil when the
+  # action writes no conflict-prone field.
+  def conflict_key
+    CONFLICT_KEYS[action_type]
   end
 
   def options
