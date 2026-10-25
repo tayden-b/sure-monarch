@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/tailscale-expose — HTTPS access to Sure over Tailscale
+#
+#   ./bin/tailscale-expose            # tailnet HTTPS only (phone on Tailscale)
+#   ./bin/tailscale-expose --funnel   # also expose the two Plaid paths publicly
+#   ./bin/tailscale-expose --status   # show current serve/funnel config
+#   ./bin/tailscale-expose --reset    # remove Sure's serve/funnel config
+#
+# What it does:
+#   serve   https://<machine>.<tailnet>.ts.net  →  http://localhost:$PORT
+#           (tailnet-only; reachable from any of your Tailscale devices)
+#
+#   funnel  https://<machine>.<tailnet>.ts.net/webhooks/plaid{,_eu}
+#           https://<machine>.<tailnet>.ts.net/accounts
+#           →  http://localhost:$PORT   (PUBLIC internet — these two paths only,
+#           which is all Plaid needs: webhook delivery + OAuth redirect.
+#           Everything else stays tailnet-only.)
+#
+# After running, paste the printed URLs into deploy/mac/.env (APP_DOMAIN,
+# PLAID_REDIRECT_URI, PLAID_WEBHOOK_URL) and into the Plaid dashboard.
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$KIT_DIR"
+
+ENV_FILE="$KIT_DIR/.env"
+PORT="$(grep -E '^PORT=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+PORT="${PORT:-3000}"
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+command -v tailscale >/dev/null 2>&1 || die "tailscale CLI not found. Install: https://tailscale.com/download/mac"
+
+TS_DNS="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)".*/\1/p' | head -1 | sed 's/\.$//')"
+[ -n "$TS_DNS" ] || die "Tailscale is not connected. Run 'tailscale up' first."
+BASE_URL="https://${TS_DNS}"
+
+MODE="serve"
+case "${1:-}" in
+  --funnel)  MODE="funnel" ;;
+  --status)
+    tailscale serve status || true
+    tailscale funnel status || true
+    exit 0 ;;
+  --reset)
+    say "Removing serve/funnel config (stops all tailscale serve/funnel for this machine)"
+    tailscale serve reset || true
+    exit 0 ;;
+  -h|--help)
+    sed -n '2,21p' "$0"; exit 0 ;;
+  "") ;;
+  *) die "unknown flag: $1 (use --funnel, --status, --reset, or none)" ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Tailnet HTTPS (always)
+# ---------------------------------------------------------------------------
+say "Enabling tailnet HTTPS: ${BASE_URL} → http://localhost:${PORT}"
+tailscale serve --bg --https=443 --set-path=/ "http://localhost:${PORT}"
+
+if [ "$MODE" = "funnel" ]; then
+  say ""
+  say "Enabling funnel for the Plaid paths only (public internet):"
+  say "  ${BASE_URL}/webhooks/plaid      (Plaid webhook delivery)"
+  say "  ${BASE_URL}/webhooks/plaid_eu   (Plaid EU webhook delivery)"
+  say "  ${BASE_URL}/accounts            (Plaid OAuth redirect target)"
+  tailscale funnel --bg --https=443 --set-path=/webhooks/plaid    "http://localhost:${PORT}"
+  tailscale funnel --bg --https=443 --set-path=/webhooks/plaid_eu "http://localhost:${PORT}"
+  tailscale funnel --bg --https=443 --set-path=/accounts          "http://localhost:${PORT}"
+  say ""
+  say "Funnel requires it to be allowed in your tailnet ACLs. If the commands"
+  say "above failed, ask your tailnet admin to add a funnel nodeAttr — see:"
+  say "  https://tailscale.com/kb/1223/funnel"
+fi
+
+say ""
+tailscale serve status || true
+
+# Write the tailnet-derived URLs into .env (empty fields only; APP_DOMAIN
+# gets refreshed since it must match the tailnet host).
+set_env() {
+  local key="$1" value="$2"
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    sed "s|^${key}=.*|${key}=${value}|" "$ENV_FILE" > "$ENV_FILE.tmp" && mv "$ENV_FILE.tmp" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+if [ -f "$ENV_FILE" ]; then
+  set_env APP_DOMAIN "$TS_DNS"
+  set_env RAILS_ASSUME_SSL true
+  set_env PLAID_REDIRECT_URI "${BASE_URL}/accounts"
+  set_env PLAID_WEBHOOK_URL "${BASE_URL}/webhooks/plaid"
+  say ""
+  say "==> Updated .env: APP_DOMAIN, RAILS_ASSUME_SSL, PLAID_REDIRECT_URI, PLAID_WEBHOOK_URL"
+  say "    Restart to apply: docker compose up -d"
+else
+  say ""
+  say "==> Paste these into deploy/mac/.env, then restart: docker compose up -d"
+  say "    APP_DOMAIN=${TS_DNS}"
+  say "    RAILS_ASSUME_SSL=true"
+  say "    PLAID_REDIRECT_URI=${BASE_URL}/accounts"
+  say "    PLAID_WEBHOOK_URL=${BASE_URL}/webhooks/plaid"
+fi
+
+say ""
+say "==> And in the Plaid dashboard (https://dashboard.plaid.com → Team settings → API):"
+say "    Allowed redirect URIs: ${BASE_URL}/accounts"
+say "    (the webhook URL above is what Sure registers with Plaid automatically"
+say "     when you link an account — make sure it is publicly reachable if you"
+say "     use --funnel, or tailnet-reachable if only you run syncs manually)"

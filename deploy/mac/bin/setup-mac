@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/setup-mac — one-command setup for Sure on a Mac
+#
+#   cd deploy/mac && ./bin/setup-mac
+#
+# Checks prerequisites, creates .env (auto-generating every secret that can be
+# created locally), prompts only for values that need an external account,
+# builds and starts the compose stack, prepares the database, waits for
+# health, then prints your local and tailnet URLs.
+#
+# Re-runnable: existing .env values are never overwritten; the compose stack
+# is just updated/restarted.
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$KIT_DIR"
+
+ENV_FILE="$KIT_DIR/.env"
+EXAMPLE_FILE="$KIT_DIR/.env.example"
+
+say()  { printf '%s\n' "$*"; }
+step() { printf '\n==> %s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
+die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# 1. Prerequisites
+# ---------------------------------------------------------------------------
+step "Checking prerequisites"
+
+command -v docker >/dev/null 2>&1 || die "Docker not found. Install Docker Desktop for Mac: https://docs.docker.com/desktop/install/mac-install/"
+docker info >/dev/null 2>&1 || die "Docker is installed but not running. Open Docker Desktop and wait for it to start, then re-run."
+docker compose version >/dev/null 2>&1 || die "docker compose plugin missing. Update Docker Desktop: https://docs.docker.com/desktop/install/mac-install/"
+say "  docker        OK ($(docker --version | awk '{print $3}' | tr -d ,))"
+
+if command -v tailscale >/dev/null 2>&1; then
+  say "  tailscale     OK"
+  TAILSCALE_OK=1
+else
+  warn "tailscale CLI not found — skipping tailnet URL detection."
+  warn "Install Tailscale for phone/remote access: https://tailscale.com/download/mac"
+  TAILSCALE_OK=0
+fi
+
+command -v openssl >/dev/null 2>&1 || die "openssl not found (ships with macOS — something is very wrong)"
+
+# ---------------------------------------------------------------------------
+# 2. .env file
+# ---------------------------------------------------------------------------
+step "Configuring .env"
+
+# set_env KEY VALUE — replace existing KEY= line or append. Idempotent.
+set_env() {
+  local key="$1" value="$2"
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    # macOS sed: use a temp file instead of -i ''
+    sed "s|^${key}=.*|${key}=${value}|" "$ENV_FILE" > "$ENV_FILE.tmp" && mv "$ENV_FILE.tmp" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+get_env() {
+  grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
+# fill KEY GEN — set KEY to the output of GEN only if currently empty.
+fill_secret() {
+  local key="$1"; shift
+  if [ -z "$(get_env "$key")" ]; then
+    set_env "$key" "$("$@")"
+    say "  generated $key"
+  else
+    say "  kept existing $key"
+  fi
+}
+
+if [ ! -f "$ENV_FILE" ]; then
+  cp "$EXAMPLE_FILE" "$ENV_FILE"
+  say "  created .env from .env.example"
+else
+  say "  found existing .env"
+fi
+
+fill_secret SECRET_KEY_BASE openssl rand -hex 64
+fill_secret POSTGRES_PASSWORD openssl rand -hex 24
+fill_secret ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY openssl rand -hex 32
+fill_secret ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY openssl rand -hex 32
+fill_secret ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT openssl rand -hex 32
+
+# ---------------------------------------------------------------------------
+# 3. Values that need a human
+# ---------------------------------------------------------------------------
+# Prompt for optional external credentials. Blank = feature stays off;
+# everything can be filled in .env later without re-running this script.
+prompt_opt() {
+  local key="$1" help="$2" current
+  current="$(get_env "$key")"
+  if [ -n "$current" ]; then
+    say "  $key already set — skipping"
+    return
+  fi
+  if [ -t 0 ]; then
+    printf '\n%s\n  docs: %s\n  (blank = skip; you can set it in .env later)\n  %s: ' \
+      "$key" "$help" "$key"
+    local reply
+    read -r reply || reply=""
+    [ -n "$reply" ] && set_env "$key" "$reply"
+  fi
+}
+
+step "Optional external accounts (press Enter to skip any)"
+
+prompt_opt OPENAI_ACCESS_TOKEN "https://platform.openai.com/api-keys (enables AI chat/categorize; costs money)"
+prompt_opt TWELVE_DATA_API_KEY "https://twelvedata.com → API Key (or leave blank for free Yahoo Finance quotes)"
+prompt_opt PLAID_CLIENT_ID "https://dashboard.plaid.com/developers/keys — use Sandbox keys first"
+if [ -n "$(get_env PLAID_CLIENT_ID)" ]; then
+  prompt_opt PLAID_SECRET "https://dashboard.plaid.com/developers/keys — secret for PLAID_ENV=$(get_env PLAID_ENV)"
+else
+  say "  PLAID_CLIENT_ID blank — skipping PLAID_SECRET"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Build + start
+# ---------------------------------------------------------------------------
+step "Building the app image (first run can take 10–20 min)"
+docker compose build
+
+step "Starting the stack"
+docker compose up -d
+
+step "Preparing the database"
+# bin/docker-entrypoint already runs db:prepare on web boot; run again so this
+# script works even after the container was already up.
+docker compose exec -T web bin/rails db:prepare
+
+# ---------------------------------------------------------------------------
+# 5. Wait for health
+# ---------------------------------------------------------------------------
+PORT="$(get_env PORT)"; PORT="${PORT:-3000}"
+step "Waiting for http://localhost:${PORT}/up"
+for _ in $(seq 1 60); do
+  if curl -fsS "http://localhost:${PORT}/up" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+curl -fsS "http://localhost:${PORT}/up" >/dev/null 2>&1 \
+  || die "App did not become healthy. Check: docker compose logs web"
+
+# ---------------------------------------------------------------------------
+# 6. URLs
+# ---------------------------------------------------------------------------
+step "Done"
+say "  Local:    http://localhost:${PORT}"
+
+if [ "$TAILSCALE_OK" = "1" ]; then
+  TS_DNS="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)".*/\1/p' | head -1 | sed 's/\.$//')"
+  if [ -n "$TS_DNS" ]; then
+    say "  Tailnet:  https://${TS_DNS}  (run ./bin/tailscale-expose to enable HTTPS"
+    say "            — it fills the matching .env values for you)"
+  else
+    say "  Tailscale installed but not logged in — run 'tailscale up', then ./bin/tailscale-expose"
+  fi
+else
+  say "  Remote:   install Tailscale, then run ./bin/tailscale-expose"
+fi
+
+say ""
+say "Create your account at the local URL, then set ONBOARDING_STATE=closed in .env"
+say "and restart: docker compose up -d"
+say ""
+say "Optional: ./bin/install-launchd   (start at login + nightly backups)"
+say "          ./bin/backup            (manual backup to ./backups/)"
