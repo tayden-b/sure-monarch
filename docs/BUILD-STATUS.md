@@ -45,7 +45,7 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 | T10 Recurring polish (swe-2-high) | [0eb00f24](https://app.devin.ai/sessions/0eb00f24c7eb42639ec273b6daa0b468) | [#8](https://github.com/tayden-b/sure-monarch/pull/8) | **merged** | 8c9df482 |
 | T3 Cross-source dedup (swe-2-max) | [db5dae27](https://app.devin.ai/sessions/db5dae271fb34caaa7994889e5f6d041) | [#14](https://github.com/tayden-b/sure-monarch/pull/14) | **merged** | f1cf5572 |
 | T4 Rule ordering (swe-2-max) | [aa20bfb5](https://app.devin.ai/sessions/aa20bfb5b8c7409c91e1f1d85e69da8c) | [#13](https://github.com/tayden-b/sure-monarch/pull/13) | **merged** | 88f3be95 |
-| T6 Merchant spend report (swe-2-max) | [b33e15dc](https://app.devin.ai/sessions/b33e15dc395b47e28034fbb30487fe78) | — | running | — |
+| T6 Merchant spend report (swe-2-max) | [b33e15dc](https://app.devin.ai/sessions/b33e15dc395b47e28034fbb30487fe78) | [#16](https://github.com/tayden-b/sure-monarch/pull/16) | **merged** | b0970d8c |
 | T7 Flex/discretionary budget (swe-2-max) | [7110bf7e](https://app.devin.ai/sessions/7110bf7e4a4c41b09d578caca4b14660) | — | running | — |
 
 ## Integration gate
