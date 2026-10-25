@@ -544,6 +544,15 @@ Rails.application.routes.draw do
     post :confirm_update, on: :member
   end
 
+  namespace :dedup do
+    resources :candidates, only: :index do
+      collection do
+        post :merge
+        post :dismiss
+      end
+    end
+  end
+
   namespace :transactions do
     resource :bulk_deletion, only: :create
     resource :bulk_update, only: %i[new create]

@@ -646,6 +646,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_213000) do
     t.check_constraint "level::text = ANY (ARRAY['debug'::character varying::text, 'info'::character varying::text, 'warn'::character varying::text, 'error'::character varying::text])", name: "chk_debug_log_entries_level"
   end
 
+  create_table "dedup_dismissals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "family_id", null: false
+    t.string "pair_key", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id", "pair_key"], name: "idx_dedup_dismissals_unique", unique: true
+    t.index ["family_id"], name: "index_dedup_dismissals_on_family_id"
+  end
+
   create_table "depositories", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.jsonb "locked_attributes", default: {}
@@ -3012,6 +3021,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_213000) do
   add_foreign_key "debug_log_entries", "accounts", on_delete: :nullify
   add_foreign_key "debug_log_entries", "families", on_delete: :nullify
   add_foreign_key "debug_log_entries", "users", on_delete: :nullify
+  add_foreign_key "dedup_dismissals", "families"
   add_foreign_key "enable_banking_accounts", "enable_banking_items"
   add_foreign_key "enable_banking_items", "families"
   add_foreign_key "entries", "account_statements", column: "reconciled_by_statement_id", on_delete: :nullify
