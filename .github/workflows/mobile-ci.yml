@@ -1,22 +1,9 @@
 name: Mobile CI
 
+# Manual-only on this fork: no mobile app is built or released from a personal
+# self-hosted deployment.
 on:
-  pull_request:
-    paths:
-      - 'mobile/**'
-      - 'public/android-chrome-*.png'
-      - 'public/apple-touch-icon.png'
-      - '.github/workflows/flutter-build.yml'
-      - '.github/workflows/mobile-ci.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'mobile/**'
-      - 'public/android-chrome-*.png'
-      - 'public/apple-touch-icon.png'
-      - '.github/workflows/flutter-build.yml'
-      - '.github/workflows/mobile-ci.yml'
+  workflow_dispatch:
 
 concurrency:
   group: mobile-ci-${{ github.ref }}

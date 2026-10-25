@@ -1,9 +1,9 @@
 name: Update Docs
 
+# Manual-only on this fork: the Mintlify docs agent targets upstream's docs
+# site and needs upstream secrets.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   update-docs:

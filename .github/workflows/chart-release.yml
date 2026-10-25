@@ -1,9 +1,8 @@
 name: Chart Release
 
+# Manual-only on this fork: no chart releases are cut from a personal
+# self-hosted deployment.
 on:
-  push:
-    tags:
-      - 'chart-v*'
   workflow_dispatch:
 
 permissions:

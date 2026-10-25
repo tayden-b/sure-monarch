@@ -1,6 +1,19 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
+      - monarch-baseline
+    paths-ignore:
+      - 'charts/**'
+  pull_request:
+    branches:
+      - main
+      - monarch-baseline
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'charts/**'
   workflow_call:
     inputs:
       require_js_dependency_audit:
@@ -11,7 +24,7 @@ on:
 
 jobs:
   scan_ruby:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout code
@@ -29,7 +42,7 @@ jobs:
         run: bin/brakeman --no-pager
 
   scan_js:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout code
@@ -65,7 +78,7 @@ jobs:
           done
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout code
@@ -83,7 +96,7 @@ jobs:
         run: bin/rubocop -f github
 
   lint_js:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout code
@@ -105,7 +118,7 @@ jobs:
         run: npm run lint
 
   test_unit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     env:
@@ -156,7 +169,7 @@ jobs:
         run: bin/rails test
 
   test_system:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     env:
@@ -220,3 +233,61 @@ jobs:
           name: screenshots
           path: ${{ github.workspace }}/tmp/screenshots
           if-no-files-found: ignore
+
+  # Advisory only: runs RuboCop and Brakeman scoped to the files changed in
+  # this push/PR. continue-on-error keeps pre-existing issues in the fork from
+  # turning the check rollup red; offenses still show in the job log.
+  lint_changed_files:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@97ecb7b512899eb71ab1bf2310a624c6f1589ac6 # v1.308.0
+        with:
+          ruby-version: .ruby-version
+          bundler-cache: true
+
+      - name: Determine changed Ruby files
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # Branch pushes have an all-zero "before"; diff against the default
+          # branch's merge-base instead.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$(git merge-base HEAD "origin/${{ github.event.repository.default_branch }}")"
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+          git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.rb' \
+            | tee /tmp/changed_ruby.txt
+
+          if [ -s /tmp/changed_ruby.txt ]; then
+            echo "has_ruby=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_ruby=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: RuboCop on changed files
+        if: steps.changed.outputs.has_ruby == 'true'
+        shell: bash
+        run: xargs -a /tmp/changed_ruby.txt bin/rubocop --force-exclusion
+
+      - name: Brakeman on changed files
+        if: steps.changed.outputs.has_ruby == 'true'
+        shell: bash
+        run: bin/brakeman --no-pager --only-files "$(paste -sd, /tmp/changed_ruby.txt)"

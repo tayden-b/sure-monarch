@@ -24,16 +24,9 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    tags:
-      - 'v*'
-    branches:
-      - main
-    paths-ignore:
-      - 'charts/**'
-      - 'mobile/**'
-  schedule:
-    - cron: '30 1 * * *'
+  # Manual-only on this fork: image publishing to GHCR, tag-triggered releases
+  # and the nightly rebuild are not used for a personal self-hosted deployment.
+  # Trigger manually with `push: true` if a GHCR image is ever wanted.
 
 env:
   REGISTRY: ghcr.io

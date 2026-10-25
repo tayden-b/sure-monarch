@@ -27,6 +27,7 @@ require "rack/test"
 require "tempfile"
 require "uri"
 require Rails.root.join("test/support/sql_query_capture").to_s
+require Rails.root.join("test/support/encrypted_fixture_serializing_columns").to_s
 
 VCR.configure do |config|
   config.cassette_library_dir = "test/vcr_cassettes"
