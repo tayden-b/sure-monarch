@@ -6,6 +6,15 @@ en:
     category:
       delete: Delete category
       edit: Edit category
+      classification:
+        income: Income
+        expense: Expense
+        transfer: Transfer
+    category_list_group:
+      classification:
+        income: Income
+        expense: Expense
+        transfer: Transfer
     create:
       success: Category created successfully
     destroy:
@@ -17,6 +26,13 @@ en:
       name_label: Name
       unassigned: "(unassigned)"
       parent_category_label: "Parent category (optional)"
+      group_label: "Group (optional)"
+      no_group: "(no group)"
+      classification_label: "Classification"
+      classification_options:
+        income: Income
+        expense: Expense
+        transfer: Transfer
       trigger_label: Choose color and icon
       color: Color
       icon: Icon
@@ -33,6 +49,7 @@ en:
       empty: No categories found
       merge: Merge categories
       new: New category
+      ungrouped: Ungrouped
     merge:
       title: Merge categories
       description: Select a target category and the categories to merge into it. Matching transactions and budget lines will move to the target.

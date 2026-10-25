@@ -1,0 +1,12 @@
+household:
+  name: Household Ops
+  family: dylan_family
+  classification: expense
+  position: 1
+  color: "#4da568"
+
+income_group:
+  name: Income Streams
+  family: dylan_family
+  classification: income
+  position: 2
