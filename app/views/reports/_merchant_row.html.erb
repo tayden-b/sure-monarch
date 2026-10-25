@@ -1,0 +1,53 @@
+<%
+  no_merchant = merchant.merchant_name.nil?
+  display_name = no_merchant ? Merchant.no_merchant_name : merchant.merchant_name
+  # The feed filters merchants by name; the sentinel covers the no-merchant bucket.
+  filter_value = no_merchant ? Merchant::NO_MERCHANT_FILTER_VALUE : merchant.merchant_name
+  percentage = total.zero? ? 0 : (merchant.total.to_f / total * 100).round(1)
+  transactions_href = transactions_path(q: { merchants: [ filter_value ], start_date: start_date, end_date: end_date })
+%>
+
+<tr data-merchant="<%= no_merchant ? "no-merchant" : merchant.merchant_name %>"
+    class="text-secondary text-sm <%= show_border ? "table-divider" : "" %> group/merchant-row">
+  <td class="py-3 px-4 lg:px-6">
+    <div class="flex items-center gap-2 relative">
+      <% if merchant.logo_url.present? %>
+        <%= image_tag Setting.transform_brand_fetch_url(merchant.logo_url),
+            class: "h-7 w-7 flex-shrink-0 rounded-full border border-secondary",
+            loading: "lazy",
+            alt: "" %>
+      <% elsif no_merchant %>
+        <%= render DS::FilledIcon.new(icon: "minus-circle", size: "md", rounded: true) %>
+      <% else %>
+        <%= render DS::FilledIcon.new(
+          variant: :text,
+          hex_color: merchant.color,
+          text: display_name,
+          size: "md",
+          rounded: true
+        ) %>
+      <% end %>
+      <%# Stretched link anchored to this flex wrapper — see _category_row for
+          why it must not be the <tr> (Safari click-capture bug). %>
+      <%= link_to display_name,
+            transactions_href,
+            class: "font-medium text-primary hover:underline before:absolute before:inset-0 before:content-['']",
+            data: { turbo_frame: "_top", turbo_prefetch: false } %>
+      <span class="text-xs text-subdued whitespace-nowrap">
+        (<%= t("reports.transactions_breakdown.table.entries", count: merchant.transactions_count) %>)
+      </span>
+    </div>
+  </td>
+
+  <td class="py-3 px-4 lg:px-6 text-right">
+    <span class="text-sm text-primary privacy-sensitive">
+      <%= Money.new(merchant.total, Current.family.currency).format %>
+    </span>
+  </td>
+
+  <td class="py-3 px-4 lg:px-6 text-right">
+    <span class="text-sm text-secondary">
+      <%= percentage %>%
+    </span>
+  </td>
+</tr>

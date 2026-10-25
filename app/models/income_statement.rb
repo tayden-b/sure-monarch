@@ -139,6 +139,27 @@ class IncomeStatement
     end
   end
 
+  # Per-merchant expense totals (in family currency) for a period, powering
+  # the reports "by merchant" breakdown and CSV export. Rows are ranked by
+  # spend; `limit` keeps only the top N — the "No merchant" bucket competes
+  # like any named merchant. Same scoping as `expense_totals`.
+  def merchant_totals(period:, limit: nil)
+    Rails.cache.fetch([
+      "income_statement", "merchant_totals", family.id, user&.id, @purpose,
+      included_account_ids_hash, period.start_date, period.end_date, limit,
+      *cache_freshness_key
+    ]) do
+      MerchantTotals.new(
+        family,
+        transactions_scope: family.transactions.visible.excluding_pending.in_period(period),
+        date_range: period.date_range,
+        included_account_ids: included_account_ids,
+        account_flag: account_flag,
+        limit: limit
+      ).call
+    end
+  end
+
   def totals_for(period, account_ids: nil)
     scope = family.transactions.visible.excluding_pending.in_period(period)
     scope = scope.where(entries: { account_id: account_ids }) if account_ids.present?

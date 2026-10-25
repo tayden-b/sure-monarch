@@ -357,6 +357,39 @@
     </section>
   <% end %>
 
+  <%# Spending by Merchant %>
+  <% if @merchant_breakdown[:top].any? %>
+    <section class="tufte-section tufte-keep-together">
+      <h2 class="tufte-section-title"><%= t("reports.print.merchants.title") %></h2>
+      <table class="tufte-table tufte-compact">
+        <thead>
+          <tr>
+            <th><%= t("reports.print.merchants.merchant") %></th>
+            <th class="tufte-right"><%= t("reports.print.merchants.amount") %></th>
+            <th class="tufte-right"><%= t("reports.print.merchants.percent") %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @merchant_breakdown[:top].each do |merchant| %>
+            <% percentage = @merchant_breakdown[:total].zero? ? 0 : (merchant.total.to_f / @merchant_breakdown[:total] * 100).round(0) %>
+            <tr>
+              <td><%= merchant.merchant_name || Merchant.no_merchant_name %></td>
+              <td class="tufte-right"><%= Money.new(merchant.total, Current.family.currency).format %></td>
+              <td class="tufte-right tufte-muted"><%= percentage %>%</td>
+            </tr>
+          <% end %>
+          <% if @merchant_breakdown[:count] > @merchant_breakdown[:top].size %>
+            <tr>
+              <td class="tufte-muted"><%= t("reports.print.merchants.more_merchants", count: @merchant_breakdown[:count] - @merchant_breakdown[:top].size) %></td>
+              <td></td>
+              <td></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
   <footer class="tufte-footer">
     <%= product_name %> · <%= @start_date.strftime("%B %Y") %> – <%= @end_date.strftime("%B %Y") %>
   </footer>

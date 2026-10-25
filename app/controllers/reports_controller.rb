@@ -130,6 +130,10 @@ class ReportsController < ApplicationController
       # Transactions breakdown
       @transactions = build_transactions_breakdown
 
+      # By-merchant spending breakdown (ranked; capped for display — the CSV
+      # export builds its own un-capped list from the same rollup)
+      @merchant_breakdown = build_merchant_breakdown
+
       # Investment metrics
       @investment_metrics = build_investment_metrics
 
@@ -192,6 +196,20 @@ class ReportsController < ApplicationController
           locals: {
             transactions: @transactions,
             period_type: @period_type,
+            start_date: @start_date,
+            end_date: @end_date
+          },
+          visible: @has_accounts,
+          collapsible: true
+        },
+        {
+          key: "merchant_breakdown",
+          title: "reports.merchant_breakdown.title",
+          partial: "reports/merchant_breakdown",
+          locals: {
+            merchants: @merchant_breakdown[:top],
+            merchants_total: @merchant_breakdown[:total],
+            merchants_count: @merchant_breakdown[:count],
             start_date: @start_date,
             end_date: @end_date
           },
@@ -486,6 +504,20 @@ class ReportsController < ApplicationController
       result.sort_by(&sort_logic)
     end
 
+    # How many merchants the on-page breakdown lists. The percentage share
+    # still divides by ALL merchant spend, so the ranking is a top-N cut of a
+    # complete rollup, not a renormalized one.
+    MERCHANT_BREAKDOWN_LIMIT = 10
+
+    def build_merchant_breakdown
+      all_merchants = @income_statement.merchant_totals(period: @period)
+      {
+        top: all_merchants.first(MERCHANT_BREAKDOWN_LIMIT),
+        total: all_merchants.sum(&:total),
+        count: all_merchants.size
+      }
+    end
+
     def build_investment_metrics
       investment_statement = Current.family.investment_statement
       investment_accounts = investment_statement.investment_accounts
@@ -778,13 +810,14 @@ class ReportsController < ApplicationController
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
         .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
-        .includes(entry: :account, category: [])
+        .includes(entry: :account, category: [], merchant: [])
       transactions = exclude_tax_advantaged_accounts(transactions)
 
       transactions = apply_transaction_filters(transactions)
 
       # Group by category, type, and month
       breakdown = {}
+      merchants = {}
       family_currency = Current.family.currency
 
       # Process transactions
@@ -807,6 +840,16 @@ class ReportsController < ApplicationController
         breakdown[key][:months][month_key] ||= 0
         breakdown[key][:months][month_key] += converted_amount
         breakdown[key][:total] += converted_amount
+
+        # Merchant spend follows the same direction test as the category
+        # buckets (positive entry amount = spend), so the two sections agree.
+        if is_expense
+          merchant_name = transaction.merchant&.name || Merchant.no_merchant_name
+          merchants[merchant_name] ||= { merchant: merchant_name, months: {}, total: 0 }
+          merchants[merchant_name][:months][month_key] ||= 0
+          merchants[merchant_name][:months][month_key] += converted_amount
+          merchants[merchant_name][:total] += converted_amount
+        end
       end
 
       # Convert to array and sort by type and total (descending)
@@ -822,11 +865,13 @@ class ReportsController < ApplicationController
       # Separate and sort income and expenses
       income_data = result.select { |r| r[:type] == "income" }.sort_by { |r| -r[:total] }
       expense_data = result.select { |r| r[:type] == "expense" }.sort_by { |r| -r[:total] }
+      merchant_data = merchants.values.sort_by { |r| -r[:total] }
 
       {
         months: months,
         income: income_data,
-        expenses: expense_data
+        expenses: expense_data,
+        merchants: merchant_data
       }
     end
 
@@ -897,6 +942,34 @@ class ReportsController < ApplicationController
           end
           grand_expenses_total = @export_data[:expenses].sum { |c| c[:total] }
           totals_row << Money.new(grand_expenses_total, Current.family.currency).format
+          csv << totals_row
+        end
+
+        # Merchants section (expense direction only, every merchant — no top-N cap)
+        if @export_data[:merchants]&.any?
+          csv << []
+          csv << [ "SPENDING BY MERCHANT" ] + Array.new(month_headers.length + 1, "")
+          csv << [ "Merchant" ] + month_headers + [ "Total" ]
+
+          @export_data[:merchants].each do |merchant_data|
+            row = [ merchant_data[:merchant] ]
+
+            @export_data[:months].each do |month|
+              amount = merchant_data[:months][month] || 0
+              row << Money.new(amount, Current.family.currency).format
+            end
+
+            row << Money.new(merchant_data[:total], Current.family.currency).format
+            csv << row
+          end
+
+          totals_row = [ "TOTAL MERCHANT SPEND" ]
+          @export_data[:months].each do |month|
+            month_total = @export_data[:merchants].sum { |m| m[:months][month] || 0 }
+            totals_row << Money.new(month_total, Current.family.currency).format
+          end
+          grand_merchant_total = @export_data[:merchants].sum { |m| m[:total] }
+          totals_row << Money.new(grand_merchant_total, Current.family.currency).format
           csv << totals_row
         end
       end

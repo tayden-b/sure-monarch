@@ -130,6 +130,13 @@ en:
           other: Showing %{count} entries
         previous: Previous
         next: Next
+    merchant_breakdown:
+      title: Spending by Merchant
+      no_transactions: No spending found for the selected period
+      showing: Showing top %{shown} of %{total} merchants
+      table:
+        heading: Top merchants
+        merchant: Merchant
     net_worth:
       title: Net Worth
       current_net_worth: Current Net Worth
@@ -239,6 +246,13 @@ en:
         weight: Weight
         value: Value
         return: Return
+      # Spending by Merchant section
+      merchants:
+        title: Spending by Merchant
+        merchant: Merchant
+        amount: Amount
+        percent: "%"
+        more_merchants: "+ %{count} more merchants"
       # Spending by Category section
       spending:
         title: Spending by Category

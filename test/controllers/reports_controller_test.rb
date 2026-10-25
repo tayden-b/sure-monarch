@@ -742,6 +742,78 @@ class ReportsControllerTest < ActionDispatch::IntegrationTest
     assert_no_match(/#{Regexp.escape(I18n.t("reports.investment_performance.sells_count", count: 2))}/, response.body)
   end
 
+  test "reports index renders the merchant breakdown with a feed link per merchant" do
+    account = @family.accounts.first
+    amazon = @family.merchants.create!(name: "Shopco")
+    safeway = @family.merchants.create!(name: "Grocerium")
+
+    create_transaction(account: account, amount: 100, merchant: amazon)
+    create_transaction(account: account, amount: 40, merchant: safeway)
+    create_transaction(account: account, amount: 10, merchant: nil) # "No merchant" bucket
+
+    get reports_path
+    assert_response :success
+
+    # Ranked by spend: the $100 merchant comes before the $40 one.
+    merchants_in_order = response.body.scan(/data-merchant="([^"]+)"/).flatten
+    assert merchants_in_order.index("Shopco") < merchants_in_order.index("Grocerium")
+
+    # Each row links into the transactions feed filtered to that merchant over
+    # the selected period — including the no-merchant sentinel bucket.
+    assert_select "tr[data-merchant='Shopco'] a[href*='#{CGI.escape('q[merchants][]')}=Shopco']", count: 1
+    assert_select "tr[data-merchant='Grocerium'] a[href*='#{CGI.escape('q[merchants][]')}=Grocerium']", count: 1
+    assert_select "tr[data-merchant='no-merchant'] a[href*='#{CGI.escape('q[merchants][]')}=#{CGI.escape(Merchant::NO_MERCHANT_FILTER_VALUE)}']", count: 1
+  end
+
+  test "merchant breakdown excludes transfers, income, and excluded transactions" do
+    account = @family.accounts.first
+    amazon = @family.merchants.create!(name: "Shopco")
+
+    create_transaction(account: account, amount: 50, merchant: amazon)
+    create_transaction(account: account, amount: 900, merchant: amazon, excluded: true)
+    create_transaction(account: account, amount: -500, merchant: amazon) # income direction
+    create_transaction(account: account, amount: 30, merchant: amazon, kind: "cc_payment")
+
+    get reports_path
+    assert_response :success
+
+    # Only the $50 purchase counts toward merchant spend.
+    assert_match(/data-merchant="Shopco".*?50\.00/m, response.body)
+    assert_no_match(/data-merchant="Shopco".*?900\.00/m, response.body)
+  end
+
+  test "transactions CSV includes a spending-by-merchant section alongside the categories" do
+    account = @family.accounts.first
+    amazon = @family.merchants.create!(name: "Shopco")
+
+    create_transaction(account: account, amount: 80, merchant: amazon)
+    create_transaction(account: account, amount: 20, merchant: nil)
+    create_transaction(account: account, amount: 60, merchant: amazon, kind: "funds_movement")
+    create_transaction(account: account, amount: -300, merchant: amazon) # income: no merchant row
+    create_transaction(account: account, amount: 999, merchant: amazon, excluded: true)
+
+    get export_transactions_reports_path(format: :csv)
+    assert_response :success
+
+    rows = CSV.parse(response.body)
+    header = rows.find { |row| row[0] == "SPENDING BY MERCHANT" }
+    assert_not_nil header
+
+    merchant_rows = rows.index_by(&:first)
+
+    # $80 Shopco spend; the $60 funds_movement, $-300 income, and $999
+    # excluded rows must not inflate it.
+    assert_equal "$80.00", merchant_rows["Shopco"][-1]
+    assert merchant_rows.key?("No merchant")
+    assert merchant_rows.key?("TOTAL MERCHANT SPEND")
+
+    # No excluded/transfer/income amount leaks into the merchant section.
+    shopco_cells = merchant_rows["Shopco"].drop(1)
+    assert_not shopco_cells.include?("$999.00")
+    assert_not shopco_cells.include?("$300.00")
+    assert_not shopco_cells.include?("$60.00")
+  end
+
   private
     # n EUR-priced disposals in a USD account, each on its own date with its
     # own rate row, so every one needs a distinct lookup.
