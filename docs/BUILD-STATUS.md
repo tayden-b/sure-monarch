@@ -33,7 +33,7 @@ Batch 1 = 6 parallel workers on non-overlapping file sets; batch 2
 (T3 dedup, T4 rule ordering, T6 merchant report, T7 flex budget) follows
 once batch-1 dependencies land (T3 needs needs-review + importer
 provenance; T4 after T2's rule-executor edit; T6/T7 after T1). All ten
-tasks are now dispatched — 8 merged, 2 in flight (T6, T7) at last update.
+tasks are now dispatched — 9 merged, T6 + follow-up worker W2-F in flight at last update.
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
