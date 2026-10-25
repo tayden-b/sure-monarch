@@ -39,7 +39,7 @@
     <%= form.hidden_field :position, value: @position %>
     <%= form.hidden_field :transaction_type, value: @group.transaction_type %>
 
-    <div class="grid grid-cols-[3fr_2fr] gap-4 items-start w-full">
+    <div class="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 items-start w-full">
       <%# Left column (60%): rule creation + transaction list %>
       <div class="space-y-4">
         <%# Rule creation %>
@@ -94,8 +94,9 @@
         </div>
       </div>
 
-      <%# Right column (40%): category picker %>
-      <div>
+      <%# Right column (40%): category picker — first on mobile so the assign
+          action is reachable without scrolling past the transaction list %>
+      <div class="order-first lg:order-none">
         <div class="bg-container shadow-border-xs rounded-xl p-4 space-y-3">
           <p class="text-sm font-medium text-secondary"><%= t(".assign_category") %></p>
 

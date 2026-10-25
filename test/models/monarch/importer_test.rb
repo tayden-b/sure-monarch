@@ -23,8 +23,8 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert import.complete?
     report = import.report["collections"]
 
-    assert_equal 11, report["accounts"]["archive_count"]
-    assert_equal 11, report["accounts"]["created"]
+    assert_equal 12, report["accounts"]["archive_count"]
+    assert_equal 12, report["accounts"]["created"]
     assert_equal 8, report["categories"]["archive_count"]
     assert_equal 3, report["category_groups"]["created"]
     assert_equal 2, report["tags"]["created"]
@@ -75,8 +75,20 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
 
     hidden = mapping_for("accounts", "acc-hidden").record
     assert_equal "disabled", hidden.status
-    assert hidden.exclude_from_reports?
     assert_equal Date.new(2026, 3, 4), hidden.disabled_at.to_date
+    assert hidden.hide_from_list?
+    assert_not hidden.include_in_net_worth?
+    assert hidden.exclude_from_reports?
+    assert hidden.hide_in_budget?
+
+    # isHidden without deactivatedAt stays active: hidden from lists but
+    # still counted in net worth and reports (Monarch semantics).
+    list_hidden = mapping_for("accounts", "acc-hidden-only").record
+    assert_equal "active", list_hidden.status
+    assert list_hidden.hide_from_list?
+    assert list_hidden.include_in_net_worth?
+    assert_not list_hidden.exclude_from_reports?
+    assert_not list_hidden.hide_in_budget?
 
     checking = mapping_for("accounts", "acc-checking").record
     assert_equal "active", checking.status
@@ -254,7 +266,7 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     import = run_import
 
     totals = import.report["account_totals"]
-    assert_equal 11, totals.size
+    assert_equal 12, totals.size
     checking = totals["acc-checking"]
     # Monarch: -84.32 + 2450 - 52 - 1200 - 300 - 25 = 788.68
     assert_equal "788.68", checking["archive_total"]
@@ -273,7 +285,7 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     report = second.report["collections"]
     assert_equal 8, report["transactions"]["updated"]
     assert_equal 0, report["transactions"]["created"]
-    assert_equal 11, report["accounts"]["updated"]
+    assert_equal 12, report["accounts"]["updated"]
   end
 
   test "dry run writes nothing but still reports" do

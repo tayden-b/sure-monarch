@@ -156,6 +156,7 @@ module AccountableResource
         :name, :balance, :subtype, :currency, :accountable_type, :return_to,
         :opening_balance_date,
         :institution_name, :institution_domain, :notes, :exclude_from_reports,
+        :hide_from_list, :include_in_net_worth, :hide_in_budget,
         :enable_category_matcher,
         accountable_attributes: self.class.permitted_accountable_attributes
       )

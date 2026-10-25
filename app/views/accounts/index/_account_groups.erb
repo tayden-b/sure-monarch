@@ -1,8 +1,13 @@
 <%# locals: (accounts:) %>
 
-<% if accounts.any? %>
+<%# hide_from_list accounts never render in groups — they live in the page's
+    "Hidden accounts" section instead — but their balances still count in
+    net worth (see BalanceSheet). %>
+<% listed_accounts = accounts.reject(&:hide_from_list?) %>
+
+<% if listed_accounts.any? %>
   <% ActiveRecord::Associations::Preloader.new(
-       records: accounts,
+       records: listed_accounts,
        associations: [
          :account_shares,
          :accountable,
@@ -13,7 +18,7 @@
        ]
      ).call %>
 <% end %>
-<% accounts.group_by(&:accountable_type).sort_by { |group, _| group }.each do |group, accounts| %>
+<% listed_accounts.group_by(&:accountable_type).sort_by { |type, _| Accountable::TYPES.index(type) || Float::INFINITY }.each do |group, accounts| %>
   <div class="bg-container-inset p-1 rounded-xl">
     <div class="flex items-center px-4 py-2 text-xs font-medium text-secondary">
       <p><%= Accountable.from_type(group).display_name %></p>

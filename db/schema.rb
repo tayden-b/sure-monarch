@@ -109,7 +109,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_201000) do
     t.boolean "enable_category_matcher", default: true, null: false
     t.boolean "exclude_from_reports", default: false, null: false
     t.uuid "family_id", null: false
+    t.boolean "hide_from_list", default: false, null: false
+    t.boolean "hide_in_budget", default: false, null: false
     t.uuid "import_id"
+    t.boolean "include_in_net_worth", default: true, null: false
     t.string "institution_domain"
     t.string "institution_name"
     t.jsonb "locked_attributes", default: {}
