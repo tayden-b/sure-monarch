@@ -956,6 +956,36 @@ class RecurringTransaction::IdentifierTest < ActiveSupport::TestCase
         "an unpinned series is still corrected to the day its charges land on"
     end
 
+    test "transfer legs never produce bill or income suggestions" do
+      checking = accounts(:depository)
+      loan = accounts(:loan)
+
+      # Legs recorded without a kind stamp -- the shape demo data and older
+      # imports actually write. Membership in `transfers` is what marks them
+      # internal, so the suggestion queue must not offer the same payment once
+      # per side (an outflow "bill" on checking plus an identically-displayed
+      # "income" on the loan account).
+      3.times do |i|
+        date = (i + 1).months.ago.beginning_of_month.to_date
+
+        outflow = checking.entries.create!(
+          date: date, amount: 413.15, currency: "USD",
+          name: "Auto Loan Payment", entryable: Transaction.new
+        )
+        inflow = loan.entries.create!(
+          date: date, amount: -413.15, currency: "USD",
+          name: "Auto Loan Payment", entryable: Transaction.new
+        )
+        Transfer.create!(inflow_transaction: inflow.entryable, outflow_transaction: outflow.entryable)
+      end
+
+      assert_equal 0, @identifier.identify_recurring_patterns
+      assert_empty @family.recurring_transactions.reload
+
+      assert_empty @identifier.candidate_patterns(sign: :outflow, min_occurrences: 2)
+      assert_empty @identifier.income_source_candidates(min_occurrences: 2)
+    end
+
   private
     # Three same-day charges inside the detection window: the smallest thing
     # the Identifier will turn into a monthly series.

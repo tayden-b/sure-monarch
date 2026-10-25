@@ -30,6 +30,15 @@ class RecurringTransactionsController < ApplicationController
     @recurring_transactions = scope.where.not(status: :suggested)
                                    .order(status: :asc, next_expected_date: :asc)
     @family = Current.family
+
+    # Monarch's subscription rollup: one monthly figure across every active
+    # recurring outflow, cadence-normalized. Rows whose currency cannot be
+    # converted are skipped and counted so the card can say it is partial.
+    @monthly_spend_total, @monthly_spend_count, @monthly_spend_unconvertible =
+      RecurringTransaction.monthly_spend_total(
+        @recurring_transactions,
+        currency: Current.family.currency
+      )
   end
 
   # Detection proposes, the user disposes: confirming makes the suggestion a
