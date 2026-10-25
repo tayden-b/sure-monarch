@@ -1,0 +1,169 @@
+# ===========================================================================
+# Sure on a Mac — production compose stack
+# ===========================================================================
+#
+# What this runs:
+#   web     Rails app (Puma) on port ${PORT:-3000}
+#   worker  Sidekiq background jobs (syncs, imports, recurring txns)
+#   db      PostgreSQL 16, persistent named volume
+#   redis   Redis, persistent named volume (cache, Sidekiq, ActionCable)
+#
+# Usage (from this directory):
+#   cp .env.example .env        # or let bin/setup-mac do it for you
+#   docker compose build        # builds from the repo Dockerfile (works on
+#                               # Apple Silicon — base image is multi-arch)
+#   docker compose up -d
+#
+# The Monarch archive mount: ./data/archive is mounted read-only at /archive
+# inside web and worker. Drop Tayden's Monarch export folder there and the
+# importer can read it without copying it into the image.
+# ===========================================================================
+
+x-db-env: &db_env
+  POSTGRES_USER: ${POSTGRES_USER:-sure}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (bin/setup-mac generates one)}
+  POSTGRES_DB: ${POSTGRES_DB:-sure_production}
+
+x-app-env: &app_env
+  <<: *db_env
+  # --- required ---
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env (bin/setup-mac generates one)}
+  SELF_HOSTED: "true"
+  ONBOARDING_STATE: ${ONBOARDING_STATE:-open}
+  DB_HOST: db
+  DB_PORT: "5432"
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+  # Plain HTTP by default — correct for http://localhost / LAN use.
+  # bin/tailscale-expose sets RAILS_ASSUME_SSL=true in .env once tailscale serve
+  # terminates TLS at the tailnet edge (required for https redirects/cookies).
+  RAILS_FORCE_SSL: ${RAILS_FORCE_SSL:-false}
+  RAILS_ASSUME_SSL: ${RAILS_ASSUME_SSL:-false}
+  APP_DOMAIN: ${APP_DOMAIN:-}
+  # --- Active Record encryption (optional; derived from SECRET_KEY_BASE when unset) ---
+  ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: ${ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY:-}
+  ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: ${ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY:-}
+  ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT:-}
+  # --- WebAuthn / passkeys (optional) ---
+  WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+  WEBAUTHN_ALLOWED_ORIGINS: ${WEBAUTHN_ALLOWED_ORIGINS:-}
+  # --- AI features (optional; empty = off) ---
+  OPENAI_ACCESS_TOKEN: ${OPENAI_ACCESS_TOKEN:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  OPENAI_URI_BASE: ${OPENAI_URI_BASE:-}
+  OPENAI_REQUEST_TIMEOUT: ${OPENAI_REQUEST_TIMEOUT:-60}
+  AI_RESPONSE_TIMEOUT: ${AI_RESPONSE_TIMEOUT:-90}
+  JEV_API_KEY: ${JEV_API_KEY:-}
+  CATEGORIZATION_PROVIDER: ${CATEGORIZATION_PROVIDER:-}
+  JEV_ENDPOINT: ${JEV_ENDPOINT:-}
+  JEV_MODEL: ${JEV_MODEL:-}
+  # --- Market data (optional) ---
+  TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+  EXCHANGE_RATE_PROVIDER: ${EXCHANGE_RATE_PROVIDER:-yahoo_finance}
+  SECURITIES_PROVIDER: ${SECURITIES_PROVIDER:-yahoo_finance}
+  BRAND_FETCH_CLIENT_ID: ${BRAND_FETCH_CLIENT_ID:-}
+  # --- Plaid (optional; configure in Settings → Providers or via these) ---
+  PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+  PLAID_SECRET: ${PLAID_SECRET:-}
+  PLAID_ENV: ${PLAID_ENV:-sandbox}
+  PLAID_INCLUDE_PENDING: ${PLAID_INCLUDE_PENDING:-1}
+  # --- Email (optional; empty = password reset emails disabled) ---
+  SMTP_ADDRESS: ${SMTP_ADDRESS:-}
+  SMTP_PORT: ${SMTP_PORT:-465}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_TLS_ENABLED: ${SMTP_TLS_ENABLED:-true}
+  SMTP_TLS_SKIP_VERIFY: ${SMTP_TLS_SKIP_VERIFY:-false}
+  EMAIL_SENDER: ${EMAIL_SENDER:-}
+  # --- Sidekiq web UI extra auth (optional) ---
+  SIDEKIQ_WEB_USERNAME: ${SIDEKIQ_WEB_USERNAME:-}
+  SIDEKIQ_WEB_PASSWORD: ${SIDEKIQ_WEB_PASSWORD:-}
+  # --- Monarch import ---
+  # Fixed path where ./data/archive is mounted; the Monarch importer reads from here.
+  MONARCH_ARCHIVE_PATH: ${MONARCH_ARCHIVE_PATH:-/archive}
+
+x-app-common: &app_common
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  image: sure-monarch:local
+  pull_policy: build
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    <<: *app_env
+  volumes:
+    - app-storage:/rails/storage
+    - ./data/archive:/archive:ro
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - sure_net
+
+services:
+  web:
+    <<: *app_common
+    environment:
+      <<: *app_env
+      # Puma reads PORT — pin the container-side port so .env's PORT only
+      # controls the host-side mapping below, not the bind inside the container.
+      PORT: "3000"
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/up || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  worker:
+    <<: *app_common
+    command: bundle exec sidekiq
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'sidekiq' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      <<: *db_env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sure_net
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sure_net
+
+volumes:
+  app-storage:
+  postgres-data:
+  redis-data:
+
+networks:
+  sure_net:
+    driver: bridge
