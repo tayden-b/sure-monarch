@@ -49,6 +49,8 @@ class Family < ApplicationRecord
   has_many :imports, dependent: :destroy
   has_many :import_sessions, dependent: :destroy
   has_many :import_source_mappings, dependent: :destroy
+  has_many :monarch_imports, dependent: :destroy
+  has_many :monarch_source_mappings, dependent: :destroy
   has_many :family_exports, dependent: :destroy
   has_many :account_statements, dependent: :destroy
 

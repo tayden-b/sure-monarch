@@ -1,0 +1,4 @@
+[
+  { "__typename": "CreditScore", "reportedDate": "2026-08-01", "score": 780, "user": { "id": "user-1", "__typename": "User" } },
+  { "__typename": "CreditScore", "reportedDate": "2026-09-01", "score": 784, "user": { "id": "user-1", "__typename": "User" } }
+]

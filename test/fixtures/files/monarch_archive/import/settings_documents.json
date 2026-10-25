@@ -1,0 +1,4 @@
+[
+  { "id": "set-1", "documentType": "householdPreferences", "data": { "budgetSystem": "flex", "timezone": "America/Los_Angeles" } },
+  { "id": "set-2", "documentType": "displaySettings", "data": { "currency": "USD", "weekStartsOn": "sunday" } }
+]

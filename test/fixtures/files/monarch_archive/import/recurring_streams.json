@@ -1,0 +1,30 @@
+[
+  {
+    "id": "rs-1",
+    "name": "Streamflix",
+    "amount": -15.99,
+    "baseDate": "2026-09-10",
+    "dayOfTheMonth": null,
+    "frequency": "monthly",
+    "isActive": true,
+    "isApproximate": false,
+    "logoUrl": "https://cdn.example.com/streamflix.png",
+    "merchant": { "id": "mer-stream", "name": "Streamflix" },
+    "recurringType": "expense",
+    "reviewStatus": "reviewed"
+  },
+  {
+    "id": "rs-2",
+    "name": "Weekly Allowance",
+    "amount": 100.0,
+    "baseDate": "2026-09-19",
+    "dayOfTheMonth": null,
+    "frequency": "weekly",
+    "isActive": true,
+    "isApproximate": true,
+    "logoUrl": null,
+    "merchant": { "id": "mer-allow", "name": "Allowance" },
+    "recurringType": "income",
+    "reviewStatus": "needs_review"
+  }
+]
