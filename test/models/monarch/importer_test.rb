@@ -117,6 +117,11 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert pending.transaction.extra.dig("monarch", "needs_review")
     assert_equal "needs_review", pending.transaction.extra.dig("monarch", "review_status")
     assert pending.transaction.pending?
+    # The provenance stays in extra, and the workflow flag lands on the row too
+    assert pending.transaction.needs_review?
+
+    reviewed = mapping_for("transactions", "txn-1").record
+    assert_not reviewed.transaction.needs_review?
 
     hidden = mapping_for("transactions", "txn-7").record
     assert hidden.excluded?

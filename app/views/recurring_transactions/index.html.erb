@@ -40,6 +40,26 @@
   </div>
 
   <% unless @family.recurring_transactions_disabled? %>
+    <%# Monarch's subscription-cost rollup: one monthly figure for every
+        active recurring outflow, normalized across cadences. Rendered when
+        there is anything to total; the count labels the figure partial when
+        a series' currency has no exchange rate. %>
+    <% if @monthly_spend_total&.positive? %>
+      <div class="bg-container rounded-xl shadow-border-xs p-4">
+        <p class="text-xs font-medium text-secondary uppercase"><%= t("recurring_transactions.monthly_total.label") %></p>
+        <p class="mt-1 text-lg font-medium text-primary">
+          <span class="privacy-sensitive"><%= format_money(@monthly_spend_total) %></span>
+          <span class="text-xs font-normal text-secondary"><%= t("recurring_transactions.monthly_total.per_month") %></span>
+        </p>
+        <p class="text-xs text-secondary">
+          <%= t("recurring_transactions.monthly_total.caption", count: @monthly_spend_count) %>
+          <% if @monthly_spend_unconvertible.positive? %>
+            &middot; <%= t("recurring_transactions.monthly_total.partial", count: @monthly_spend_unconvertible) %>
+          <% end %>
+        </p>
+      </div>
+    <% end %>
+
     <%= render DS::Alert.new(title: t("recurring_transactions.info.title"), variant: :info) do %>
       <p><%= t("recurring_transactions.info.manual_description") %></p>
       <p><%= t("recurring_transactions.info.automatic_description") %></p>

@@ -24,6 +24,8 @@ en:
       duplicate: Duplicate
       edit: Edit
       selected: selected
+      mark_reviewed: Mark reviewed
+      mark_needs_review: Mark needs review
     form:
       details: Details
       account: Account
@@ -102,6 +104,11 @@ en:
       note_label: Notes
       note_placeholder: Enter a note
       overview: Overview
+      review_section: Review
+      needs_review_title: Needs review
+      needs_review_description: Flag this transaction for the review queue, or mark it reviewed once checked.
+      mark_reviewed: Mark reviewed
+      mark_needs_review: Mark needs review
       settings: Settings
       tags_label: Tags
       tab_transactions: Transactions
@@ -168,6 +175,8 @@ en:
     transaction:
       pending: Pending
       pending_tooltip: Pending transaction — may change when posted
+      needs_review: Needs review
+      needs_review_tooltip: Flagged for review — mark reviewed once checked
       linked_with_provider: Linked with %{provider}
       activity_type_tooltip: Investment activity type
       possible_duplicate: Duplicate?
@@ -177,6 +186,9 @@ en:
       split: Split
       split_tooltip: This transaction has been split into multiple entries
       split_child_tooltip: Part of a split transaction
+    toggle_review:
+      flagged: Transaction flagged for review
+      reviewed: Transaction marked reviewed
     merge_duplicate:
       success: Transactions merged successfully
       failure: Could not merge transactions
@@ -262,6 +274,7 @@ en:
         date: Date
         type: Type
         status: Status
+        review: Review
         amount: Amount
         category: Category
         tag: Tag
@@ -335,6 +348,8 @@ en:
           transfer: Transfer
           confirmed: Confirmed
           pending: Pending
+          needs_review: Needs review
+          reviewed: Reviewed
           ai_current: AI
           ai_history: AI history
         ai_filter:
@@ -349,6 +364,9 @@ en:
         status_filter:
           confirmed: Confirmed
           pending: Pending
+        review_filter:
+          needs_review: Needs review
+          reviewed: Reviewed
       menu:
         account_filter: Account
         amount_filter: Amount
@@ -359,6 +377,7 @@ en:
         date_filter: Date
         merchant_filter: Merchant
         status_filter: Status
+        review_filter: Review
         tag_filter: Tag
         type_filter: Type
       search:
@@ -367,6 +386,8 @@ en:
         less_than: less than
       form:
         toggle_selection_checkboxes: Toggle all checkboxes
+        review_queue: "Needs review (%{count})"
+        review_queue_tooltip: Show transactions flagged for review
         search_placeholder: "Search transactions ..."
         filter: "Filter"
     attachments:

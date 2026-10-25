@@ -528,6 +528,156 @@ class InvestmentStatementTest < ActiveSupport::TestCase
       "the investment_accounts lookup backing current_holdings should only run once, even for the empty case"
   end
 
+  test "aggregate_holdings rolls a security up across accounts" do
+    aapl = Security.create!(ticker: "AAPL", name: "Apple")
+    msft = Security.create!(ticker: "MSFT", name: "Microsoft")
+
+    account1 = create_investment_account(balance: 2100)
+    account2 = create_investment_account(balance: 1200)
+
+    Holding.create!(
+      account: account1, security: aapl, date: Date.current,
+      qty: 10, price: 210, amount: 2100, currency: "USD", cost_basis: 200
+    )
+    Holding.create!(
+      account: account2, security: aapl, date: Date.current,
+      qty: 5, price: 180, amount: 900, currency: "USD", cost_basis: 150
+    )
+    Holding.create!(
+      account: account2, security: msft, date: Date.current,
+      qty: 3, price: 100, amount: 300, currency: "USD"
+    )
+
+    rows = @statement.aggregate_holdings
+    assert_equal 2, rows.size
+
+    apple = rows.first
+    assert_equal aapl, apple.security
+    assert_equal 15, apple.total_qty
+    assert_equal 3000, apple.amount.amount
+    # weight denominator = portfolio value (3300): 3000 / 3300
+    assert_in_delta 90.91, apple.weight, 0.01
+    # qty-weighted per-share basis over the positions that have one:
+    # (10*200 + 5*150) / 15 = 183.33
+    assert_in_delta 183.33, apple.avg_cost.amount, 0.01
+    assert_equal "USD", apple.avg_cost.currency.iso_code
+
+    assert_equal 2, apple.account_count
+    assert_equal [ account1, account2 ], apple.positions.map(&:account)
+    assert_equal [ 10, 5 ], apple.positions.map(&:qty)
+
+    microsoft = rows.second
+    assert_equal msft, microsoft.security
+    assert_nil microsoft.avg_cost # no cost basis anywhere → unknown, never fabricated
+    assert_in_delta 9.09, microsoft.weight, 0.01
+  end
+
+  test "aggregate_holdings converts positions to family currency" do
+    aapl = Security.create!(ticker: "AAPL", name: "Apple")
+
+    usd_account = create_investment_account(balance: 2100, currency: "USD")
+    eur_account = create_investment_account(balance: 1000, currency: "EUR")
+
+    Holding.create!(
+      account: usd_account, security: aapl, date: Date.current,
+      qty: 10, price: 210, amount: 2100, currency: "USD"
+    )
+    Holding.create!(
+      account: eur_account, security: aapl, date: Date.current,
+      qty: 4, price: 250, amount: 1000, currency: "EUR"
+    )
+
+    ExchangeRate.create!(from_currency: "EUR", to_currency: "USD", date: Date.current, rate: 1.1)
+
+    row = @statement.aggregate_holdings.sole
+    # 2100 + 1000 * 1.1 = 3200
+    assert_in_delta 3200, row.amount.amount, 0.001
+    assert_equal "USD", row.amount.currency.iso_code
+    assert_in_delta 1100, row.positions.second.amount.amount, 0.001
+  end
+
+  test "aggregate_holdings and asset_class_allocation skip accounts excluded from reports" do
+    aapl = Security.create!(ticker: "AAPL", name: "Apple", asset_class: "equity", asset_sub_class: "stock")
+    msft = Security.create!(ticker: "MSFT", name: "Microsoft")
+
+    included = create_investment_account(balance: 2100)
+    excluded = create_investment_account(balance: 500).tap { |a| a.update!(exclude_from_reports: true) }
+
+    Holding.create!(
+      account: included, security: aapl, date: Date.current,
+      qty: 10, price: 210, amount: 2100, currency: "USD"
+    )
+    Holding.create!(
+      account: excluded, security: msft, date: Date.current,
+      qty: 5, price: 100, amount: 500, currency: "USD"
+    )
+
+    assert_equal [ aapl ], @statement.aggregate_holdings.map(&:security)
+    assert_equal [ "equity" ], @statement.asset_class_allocation.map(&:key)
+  end
+
+  test "asset_class_allocation groups by class, buckets cash and unclassified, and sums to 100" do
+    stock = Security.create!(ticker: "AAPL", name: "Apple", asset_class: "equity", asset_sub_class: "stock")
+    etf = Security.create!(ticker: "VTI", name: "Vanguard", asset_class: "equity", asset_sub_class: "etf")
+    bond = Security.create!(ticker: "BND", name: "Vanguard Bond", asset_class: "fixed_income", asset_sub_class: "bond")
+    unknown = Security.create!(ticker: "XYZ", name: "Mystery")
+
+    account = create_investment_account(balance: 10_000, cash_balance: 4_000)
+
+    [ [ stock, 4_000 ], [ etf, 2_000 ], [ bond, 2_500 ], [ unknown, 1_500 ] ].each do |security, amount|
+      Holding.create!(
+        account: account, security: security, date: Date.current,
+        qty: 10, price: amount / 10.0, amount: amount, currency: "USD"
+      )
+    end
+
+    slices = @statement.asset_class_allocation
+    assert_equal %w[equity fixed_income unclassified], slices.map(&:key)
+
+    equity, fixed_income, unclassified = slices
+    assert_in_delta 6_000, equity.amount.amount, 0.001
+    assert_in_delta 60.0, equity.weight, 0.01
+    assert_equal %w[stock etf], equity.sub_slices.map(&:key)
+    assert_equal [ stock, etf ], equity.securities
+
+    # sub-slice weights share the family denominator too
+    assert_in_delta 40.0, equity.sub_slices.first.weight, 0.01
+    assert_in_delta 20.0, equity.sub_slices.second.weight, 0.01
+
+    assert_equal [ bond ], fixed_income.securities
+    assert_equal "bond", fixed_income.sub_slices.sole.key
+    assert_equal [ unknown ], unclassified.securities
+
+    # slices are shares of invested value (10_000), not the 14_000 portfolio —
+    # uninvested cash is not a position
+    assert_in_delta 100.0, slices.sum(&:weight), 0.05
+    assert_in_delta 100.0, slices.flat_map(&:sub_slices).sum(&:weight), 0.05
+  end
+
+  test "asset_class_allocation gives kind=cash securities their own slice" do
+    account = create_investment_account(balance: 1_500)
+    stock = Security.create!(ticker: "AAPL", name: "Apple", asset_class: "equity", asset_sub_class: "stock")
+    cash_security = Security.cash_for(account)
+
+    Holding.create!(
+      account: account, security: stock, date: Date.current,
+      qty: 10, price: 100, amount: 1_000, currency: "USD"
+    )
+    Holding.create!(
+      account: account, security: cash_security, date: Date.current,
+      qty: 500, price: 1, amount: 500, currency: "USD"
+    )
+
+    slices = @statement.asset_class_allocation
+    assert_equal %w[equity cash], slices.map(&:key)
+    assert_in_delta 100.0, slices.sum(&:weight), 0.05
+  end
+
+  test "asset_class_allocation is empty when the family holds nothing" do
+    assert_equal [], @statement.asset_class_allocation
+    assert_equal [], @statement.aggregate_holdings
+  end
+
   private
     def create_investment_account(balance:, cash_balance: 0, currency: "USD")
       @family.accounts.create!(

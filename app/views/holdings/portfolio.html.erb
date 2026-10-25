@@ -1,0 +1,217 @@
+<% content_for :page_header do %>
+  <div class="space-y-4 mb-6">
+    <header class="flex justify-between items-center text-primary font-medium gap-4">
+      <div class="space-y-1">
+        <h1 class="text-xl lg:text-3xl font-medium text-primary">
+          <%= t(".title") %>
+        </h1>
+        <p class="text-sm lg:text-base text-secondary">
+          <%= t(".subtitle") %>
+        </p>
+      </div>
+    </header>
+  </div>
+<% end %>
+
+<% if @investment_statement.investment_accounts.any? %>
+  <div class="space-y-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div class="bg-container-inset rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <%= icon("briefcase", size: "sm") %>
+          <span class="text-sm text-secondary"><%= t(".portfolio_value") %></span>
+        </div>
+        <p class="text-xl font-semibold text-primary privacy-sensitive">
+          <%= format_money(@investment_statement.portfolio_value_money) %>
+        </p>
+      </div>
+
+      <div class="bg-container-inset rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <%= icon("chart-pie", size: "sm") %>
+          <span class="text-sm text-secondary"><%= t(".invested") %></span>
+        </div>
+        <p class="text-xl font-semibold text-primary privacy-sensitive">
+          <%= format_money(@investment_statement.holdings_value_money) %>
+        </p>
+      </div>
+
+      <div class="bg-container-inset rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <%= icon("wallet", size: "sm") %>
+          <span class="text-sm text-secondary"><%= t(".cash") %></span>
+        </div>
+        <p class="text-xl font-semibold text-primary privacy-sensitive">
+          <%= format_money(@investment_statement.cash_balance_money) %>
+        </p>
+      </div>
+
+      <div class="bg-container-inset rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <%= icon("trending-up", size: "sm") %>
+          <span class="text-sm text-secondary"><%= t(".total_return") %></span>
+        </div>
+        <% if (trend = @investment_statement.unrealized_gains_trend) %>
+          <p class="text-xl font-semibold privacy-sensitive" style="color: <%= trend.color %>">
+            <%= format_money(Money.new(trend.value, Current.family.currency)) %>
+            (<%= trend.percent_formatted %>)
+          </p>
+        <% else %>
+          <p class="text-xl font-semibold text-secondary"><%= t(".no_data") %></p>
+        <% end %>
+      </div>
+
+      <div class="bg-container-inset rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <%= icon("activity", size: "sm") %>
+          <span class="text-sm text-secondary"><%= t(".day_change") %></span>
+        </div>
+        <% if (day_change = @investment_statement.day_change) %>
+          <p class="text-xl font-semibold privacy-sensitive" style="color: <%= day_change.color %>">
+            <%= format_money(Money.new(day_change.value, Current.family.currency)) %>
+            (<%= day_change.percent_formatted %>)
+          </p>
+        <% else %>
+          <p class="text-xl font-semibold text-secondary"><%= t(".no_data") %></p>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @allocation.any? %>
+      <section class="space-y-3">
+        <h2 class="text-lg font-medium text-primary"><%= t(".allocation") %></h2>
+        <div class="@container">
+          <div class="flex flex-col @2xl:flex-row gap-8 items-center">
+            <div class="w-full @2xl:w-1/3 max-w-[300px] px-4">
+              <div class="h-[300px] relative"
+                data-controller="donut-chart"
+                data-donut-chart-segments-value="<%= @allocation.each_with_index.map { |slice, i| { id: slice.key, name: t(".asset_classes.#{slice.key}", default: slice.key.humanize), amount: slice.amount.amount, color: Category::COLORS[i % Category::COLORS.size] } }.to_json %>"
+                data-donut-chart-segment-opacity-value="0.9"
+                data-donut-chart-extended-hover-value="true"
+                data-donut-chart-hover-extension-value="3">
+                <div data-donut-chart-target="chartContainer" class="absolute inset-0 pointer-events-none"></div>
+
+                <div data-donut-chart-target="contentContainer" class="flex justify-center items-center h-full">
+                  <div data-donut-chart-target="defaultContent" class="flex flex-col items-center">
+                    <div class="text-secondary text-sm mb-2">
+                      <span><%= t(".invested") %></span>
+                    </div>
+                    <div data-donut-chart-target="amount" class="text-3xl font-medium text-primary privacy-sensitive whitespace-nowrap">
+                      <%= format_money(Money.new(@allocation.sum { |s| s.amount.amount }, Current.family.currency)) %>
+                    </div>
+                  </div>
+
+                  <% @allocation.each_with_index do |slice, i| %>
+                    <div id="segment_<%= slice.key %>" class="hidden">
+                      <div class="flex flex-col gap-2 items-center">
+                        <p class="text-sm text-secondary"><%= t(".asset_classes.#{slice.key}", default: slice.key.humanize) %></p>
+                        <p data-donut-chart-target="amount" class="text-3xl font-medium text-primary privacy-sensitive whitespace-nowrap">
+                          <%= format_money(slice.amount) %>
+                        </p>
+                        <p class="text-sm text-secondary privacy-sensitive"><%= slice.weight %>%</p>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+
+            <div class="w-full @2xl:w-2/3">
+              <%= render DS::Table.new(
+                rows: @allocation.flat_map { |slice| [[slice, 0]] + slice.sub_slices.map { |sub| [sub, 1] } },
+                label: t(".allocation"),
+              ) do |table| %>
+                <% table.with_column(t(".asset_class"), row_header: true) do |(slice, depth)| %>
+                  <div class="flex items-center gap-3 <%= "pl-6" if depth.positive? %>">
+                    <% if depth.zero? %>
+                      <span class="h-2.5 w-2.5 rounded-full shrink-0" style="background-color: <%= Category::COLORS[@allocation.index(slice) % Category::COLORS.size] %>"></span>
+                    <% end %>
+                    <span class="<%= depth.zero? ? "font-medium text-primary" : "text-secondary" %>">
+                      <%= depth.zero? ? t(".asset_classes.#{slice.key}", default: slice.key.humanize) : t(".asset_sub_classes.#{slice.key}", default: slice.key.humanize) %>
+                    </span>
+                  </div>
+                <% end %>
+                <% table.with_column(t(".value"), numeric: true, class: "privacy-sensitive") do |(slice, _depth)| %>
+                  <%= format_money(slice.amount) %>
+                <% end %>
+                <% table.with_column(t(".weight"), numeric: true, class: "privacy-sensitive text-secondary") do |(slice, _depth)| %>
+                  <%= number_to_percentage(slice.weight, precision: 1) %>
+                <% end %>
+              <% end %>
+              <p class="text-xs text-secondary mt-2 px-1"><%= t(".allocation_note") %></p>
+            </div>
+          </div>
+        </div>
+      </section>
+    <% end %>
+
+    <section class="space-y-3">
+      <h2 class="text-lg font-medium text-primary"><%= t(".holdings") %></h2>
+
+      <% if @aggregate_holdings.any? %>
+        <%= render DS::Table.new(
+          rows: @aggregate_holdings,
+          label: t(".holdings"),
+        ) do |table| %>
+          <% table.with_column(t(".name"), row_header: true) do |row| %>
+            <div class="flex items-center gap-3">
+              <% if (logo = row.security.display_logo_url).present? %>
+                <img src="<%= logo %>" alt="<%= row.ticker %>" class="w-8 h-8 rounded-full" loading="lazy">
+              <% else %>
+                <div class="w-8 h-8 rounded-full bg-container-inset flex items-center justify-center text-xs font-medium text-secondary">
+                  <%= row.ticker.to_s.first(2).presence || "—" %>
+                </div>
+              <% end %>
+              <div>
+                <%= link_to row.name.presence || row.ticker,
+                            security_holdings_path(security_id: row.security.id),
+                            data: { turbo_frame: :drawer },
+                            class: "font-medium text-primary hover:underline" %>
+                <p class="text-xs text-secondary">
+                  <%= row.ticker %>
+                  <span class="text-subdued">&middot;</span>
+                  <%= t(".account_count", count: row.account_count) %>
+                </p>
+              </div>
+            </div>
+          <% end %>
+          <% table.with_column(t(".weight"), numeric: true, class: "privacy-sensitive text-secondary") do |row| %>
+            <%= number_to_percentage(row.weight, precision: 1) %>
+          <% end %>
+          <% table.with_column(t(".qty"), numeric: true, class: "privacy-sensitive") do |row| %>
+            <%= format_quantity(row.total_qty) %>
+          <% end %>
+          <% table.with_column(t(".average_cost"), numeric: true, class: "privacy-sensitive") do |row| %>
+            <% if row.avg_cost %>
+              <%= format_money(row.avg_cost) %>
+            <% else %>
+              <span class="text-secondary">--</span>
+            <% end %>
+          <% end %>
+          <% table.with_column(t(".value"), numeric: true, class: "privacy-sensitive") do |row| %>
+            <%= format_money(row.amount) %>
+          <% end %>
+          <% table.with_column(t(".return"), numeric: true) do |row| %>
+            <% if row.trend %>
+              <span class="privacy-sensitive" style="color: <%= row.trend.color %>">
+                <%= format_money(row.trend.value) %>
+                (<%= row.trend.percent_formatted %>)
+              </span>
+            <% else %>
+              <span class="text-secondary"><%= t(".no_cost_basis") %></span>
+            <% end %>
+          <% end %>
+        <% end %>
+      <% else %>
+        <div class="bg-container rounded-xl shadow-border-xs p-8 text-center">
+          <p class="text-secondary"><%= t(".no_holdings") %></p>
+        </div>
+      <% end %>
+    </section>
+  </div>
+<% else %>
+  <div class="bg-container rounded-xl shadow-border-xs p-8 text-center space-y-2">
+    <p class="font-medium text-primary"><%= t(".no_accounts_title") %></p>
+    <p class="text-sm text-secondary"><%= t(".no_accounts_body") %></p>
+  </div>
+<% end %>

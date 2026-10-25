@@ -1,0 +1,90 @@
+<%= render DS::Dialog.new(frame: "drawer", responsive: true) do |dialog| %>
+  <% dialog.with_header(custom_header: true) do %>
+    <div class="flex items-center justify-between">
+      <div>
+        <%= tag.h3 @aggregate.name, class: "text-2xl font-medium text-primary" %>
+        <%= tag.p @aggregate.ticker, class: "text-sm text-secondary" %>
+      </div>
+      <div class="flex items-center gap-3">
+        <% if (logo = @aggregate.security.display_logo_url).present? %>
+          <%= image_tag logo, loading: "lazy", class: "w-9 h-9 rounded-full" %>
+        <% else %>
+          <%= render DS::FilledIcon.new(variant: :text, text: @aggregate.name, size: "md", rounded: true) %>
+        <% end %>
+        <%= dialog.close_button %>
+      </div>
+    </div>
+  <% end %>
+  <% dialog.with_body do %>
+    <% dialog.with_section(title: t(".overview"), open: true) do %>
+      <dl class="space-y-3 px-3 py-2">
+        <div class="flex items-center justify-between text-sm">
+          <dt class="text-secondary"><%= t(".shares_label") %></dt>
+          <dd class="text-primary"><%= format_quantity(@aggregate.total_qty, exact: true) %></dd>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <dt class="text-secondary"><%= t(".market_value_label") %></dt>
+          <dd class="text-primary privacy-sensitive"><%= format_money(@aggregate.amount) %></dd>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <dt class="text-secondary"><%= t(".portfolio_weight_label") %></dt>
+          <dd class="text-primary"><%= number_to_percentage(@aggregate.weight, precision: 2) %></dd>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <dt class="text-secondary"><%= t(".avg_cost_label") %></dt>
+          <dd class="text-primary privacy-sensitive">
+            <%= @aggregate.avg_cost ? format_money(@aggregate.avg_cost) : t(".unknown") %>
+          </dd>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <dt class="text-secondary"><%= t(".total_return_label") %></dt>
+          <% if @aggregate.trend %>
+            <dd class="privacy-sensitive" style="color: <%= @aggregate.trend.color %>;">
+              <%= format_money(@aggregate.trend.value) %> (<%= @aggregate.trend.percent_formatted %>)
+            </dd>
+          <% else %>
+            <dd class="text-secondary"><%= t(".unknown") %></dd>
+          <% end %>
+        </div>
+      </dl>
+    <% end %>
+    <% dialog.with_section(title: t(".accounts_section", count: @aggregate.account_count), open: true) do %>
+      <%= render DS::Table.new(
+        rows: @aggregate.positions,
+        inset: true,
+        label: t(".accounts_section", count: @aggregate.account_count),
+      ) do |table| %>
+        <% table.with_column(t(".account"), row_header: true) do |position| %>
+          <%= link_to position.account.name,
+                      account_path(position.account, tab: "holdings"),
+                      data: { turbo_frame: "_top" },
+                      class: "text-primary hover:underline" %>
+        <% end %>
+        <% table.with_column(t(".qty"), numeric: true, class: "privacy-sensitive") do |position| %>
+          <%= format_quantity(position.qty) %>
+        <% end %>
+        <% table.with_column(t(".avg_cost_label"), numeric: true, class: "privacy-sensitive") do |position| %>
+          <% if position.avg_cost %>
+            <%= format_money(position.avg_cost) %>
+          <% else %>
+            <span class="text-secondary">--</span>
+          <% end %>
+        <% end %>
+        <% table.with_column(t(".value"), numeric: true, class: "privacy-sensitive") do |position| %>
+          <%= format_money(position.amount) %>
+        <% end %>
+        <% table.with_column(t(".total_return_label"), numeric: true) do |position| %>
+          <% if position.trend %>
+            <span class="privacy-sensitive" style="color: <%= position.trend.color %>">
+              <%= format_money(position.trend.value) %>
+              (<%= position.trend.percent_formatted %>)
+            </span>
+          <% else %>
+            <span class="text-secondary">--</span>
+          <% end %>
+        <% end %>
+      <% end %>
+      <p class="text-xs text-secondary px-3 pt-2"><%= t(".currency_note", currency: Current.family.currency) %></p>
+    <% end %>
+  <% end %>
+<% end %>

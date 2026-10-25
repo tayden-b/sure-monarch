@@ -1513,6 +1513,61 @@ class RecurringTransactionTest < ActiveSupport::TestCase
     assert_equal 0, series.cycles_overdue, "one day late is not one cycle missed"
   end
 
+  # Monarch's subscription-cost rollup: sum every active recurring outflow
+  # normalized to a monthly figure. A $120 annual bill contributes $10; a
+  # $5 weekly bill 5 * 365.25 / 7 / 12 ≈ 21.74.
+  test "monthly_spend_total normalizes mixed cadences to monthly" do
+    build_recurring(amount: 10).save!
+
+    annual = build_recurring(name: "Annual plan", amount: 120)
+    annual.save!
+    RecurringTransaction::FrequencyPreset.apply(annual, preset: "annual")
+    annual.save!
+
+    weekly = build_recurring(name: "Weekly plan", amount: 5)
+    weekly.save!
+    RecurringTransaction::FrequencyPreset.apply(weekly, preset: "weekly", weekday: "5")
+    weekly.save!
+
+    total, count, unconvertible =
+      RecurringTransaction.monthly_spend_total(@family.recurring_transactions, currency: "USD")
+
+    assert_equal 3, count
+    assert_equal 0, unconvertible
+    assert_in_delta 10 + 10 + 21.74, total.amount.to_f, 0.01
+  end
+
+  # Suggestions are not commitments, parked rows are not spending, and income
+  # is money in rather than spend -- none of them belong in the rollup.
+  test "monthly_spend_total counts only active outflows" do
+    build_recurring(amount: 10).save!
+    build_recurring(name: "Paycheck", amount: -3000, bill_type: "income").save!
+    build_recurring(name: "Paused plan", amount: 5, status: "paused").save!
+    build_recurring(name: "Suggested plan", amount: 8, status: "suggested").save!
+    build_recurring(name: "Ended plan", amount: 7, status: "ended").save!
+
+    total, count, unconvertible =
+      RecurringTransaction.monthly_spend_total(@family.recurring_transactions, currency: "USD")
+
+    assert_equal 1, count
+    assert_equal 0, unconvertible
+    assert_in_delta 10, total.amount.to_f, 0.01
+  end
+
+  test "monthly_spend_total skips a series its currency cannot convert" do
+    build_recurring(amount: 10).save!
+    # No fixture or provider rate for JPY -> USD, so this row must be dropped
+    # from the figure and reported rather than silently zeroed or crashing.
+    build_recurring(name: "Tokyo plan", amount: 1000, currency: "JPY").save!
+
+    total, count, unconvertible =
+      RecurringTransaction.monthly_spend_total(@family.recurring_transactions, currency: "USD")
+
+    assert_equal 2, count
+    assert_equal 1, unconvertible
+    assert_in_delta 10, total.amount.to_f, 0.01
+  end
+
   private
 
     def stale_hint_series

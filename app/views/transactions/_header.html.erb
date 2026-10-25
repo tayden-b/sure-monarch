@@ -30,6 +30,15 @@
           title: t("transactions.transaction.pending_tooltip")
         ) %>
       <% end %>
+      <% if entry.transaction.needs_review? %>
+        <%= render DS::Pill.new(
+          label: t("transactions.transaction.needs_review"),
+          tone: :warning,
+          marker: false,
+          icon: "flag",
+          title: t("transactions.transaction.needs_review_tooltip")
+        ) %>
+      <% end %>
     </div>
   </div>
 </div>
