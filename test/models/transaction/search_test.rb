@@ -1120,4 +1120,22 @@ class Transaction::SearchTest < ActiveSupport::TestCase
     assert_equal [ tx.id ], history_ids
     assert_empty current_ids
   end
+
+  test "review_status filter scopes to flagged, reviewed, or both" do
+    flagged = create_transaction(account: @checking_account, amount: 100)
+    flagged.transaction.mark_needs_review!
+    clean = create_transaction(account: @checking_account, amount: 200)
+
+    flagged_scope = Transaction::Search.new(@family, filters: { review_status: [ "needs_review" ] }).transactions_scope
+    assert_includes flagged_scope, flagged.transaction
+    assert_not_includes flagged_scope, clean.transaction
+
+    reviewed_scope = Transaction::Search.new(@family, filters: { review_status: [ "reviewed" ] }).transactions_scope
+    assert_includes reviewed_scope, clean.transaction
+    assert_not_includes reviewed_scope, flagged.transaction
+
+    both_scope = Transaction::Search.new(@family, filters: { review_status: %w[needs_review reviewed] }).transactions_scope
+    assert_includes both_scope, flagged.transaction
+    assert_includes both_scope, clean.transaction
+  end
 end

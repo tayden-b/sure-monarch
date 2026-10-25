@@ -8,7 +8,8 @@ class Rule::Registry::TransactionResource < Rule::Registry
     Rule::ConditionFilter::TransactionTag,
     Rule::ConditionFilter::TransactionDetails,
     Rule::ConditionFilter::TransactionNotes,
-    Rule::ConditionFilter::TransactionAccount
+    Rule::ConditionFilter::TransactionAccount,
+    Rule::ConditionFilter::TransactionNeedsReview
   ].freeze
 
   def self.condition_filter_keys
@@ -32,6 +33,7 @@ class Rule::Registry::TransactionResource < Rule::Registry
       Rule::ActionExecutor::SetInvestmentActivityLabel.new(rule),
       Rule::ActionExecutor::ExcludeTransaction.new(rule),
       Rule::ActionExecutor::SetAsTransferOrPayment.new(rule),
+      Rule::ActionExecutor::SetNeedsReview.new(rule),
       Rule::ActionExecutor::SendEmailNotification.new(rule)
     ]
 

@@ -113,6 +113,10 @@ en:
         expense: Expense
         transfer: Transfer
         equal_to: Equal to
+      transaction_needs_review:
+        needs_review: Needs review
+        reviewed: Reviewed
+        equal_to: Equal to
       operators:
         contains: Contains
         does_not_contain: Does not contain
@@ -125,6 +129,10 @@ en:
         greater_or_equal_to: Greater or equal to
         less_than: Less than
         less_than_or_equal_to: Less than or equal to
+    action_executors:
+      set_needs_review:
+        needs_review: Needs review
+        reviewed: Reviewed
   rule:
     conditions:
       condition_group:

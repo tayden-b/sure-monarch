@@ -1725,6 +1725,40 @@ end
     assert_no_match(/ai_status/, response.location)
   end
 
+  test "toggle_review flags and unflags a transaction" do
+    transaction = @entry.transaction
+    assert_not transaction.needs_review?
+
+    post toggle_review_transaction_url(transaction)
+    assert_response :redirect
+    assert transaction.reload.needs_review?
+
+    post toggle_review_transaction_url(transaction)
+    assert_response :redirect
+    assert_not transaction.reload.needs_review?
+  end
+
+  test "index renders the review queue chip when flagged transactions exist" do
+    @entry.transaction.mark_needs_review!
+
+    get transactions_url
+
+    assert_response :success
+    assert_match "Needs review", response.body
+    assert_match "review_status%5D%5B%5D=needs_review", response.body
+  end
+
+  test "review_status search param filters the feed" do
+    @entry.transaction.mark_needs_review!
+    other = create_transaction(account: accounts(:depository))
+
+    get transactions_url(q: { review_status: [ "needs_review" ] })
+
+    assert_response :success
+    assert_includes rendered_entry_ids, @entry.id.to_s
+    assert_not_includes rendered_entry_ids, other.id.to_s
+  end
+
   private
     def rendered_entry_ids
       css_select("turbo-frame[id^='entry_']").map { |node| node["id"].delete_prefix("entry_") }
