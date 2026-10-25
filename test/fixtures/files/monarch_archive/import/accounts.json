@@ -6,8 +6,15 @@
     "currentBalance": 5230.5,
     "displayBalance": 5230.5,
     "signedBalance": 5230.5,
-    "type": { "name": "depository", "display": "Checking", "group": "depository" },
-    "subtype": { "name": "checking", "display": "Checking" },
+    "type": {
+      "name": "depository",
+      "display": "Checking",
+      "group": "depository"
+    },
+    "subtype": {
+      "name": "checking",
+      "display": "Checking"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -19,8 +26,18 @@
     "isManual": false,
     "icon": "bank",
     "mask": "4321",
-    "institution": { "id": "ins-1", "name": "First Test Bank", "logo": "https://cdn.example.com/logos/ftb.png", "url": "https://firsttestbank.example.com" },
-    "credential": { "dataProvider": "PLAID", "institution": { "name": "First Test Bank" } }
+    "institution": {
+      "id": "ins-1",
+      "name": "First Test Bank",
+      "logo": "https://cdn.example.com/logos/ftb.png",
+      "url": "https://firsttestbank.example.com"
+    },
+    "credential": {
+      "dataProvider": "PLAID",
+      "institution": {
+        "name": "First Test Bank"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -29,8 +46,15 @@
     "currentBalance": 12000.0,
     "displayBalance": 12000.0,
     "signedBalance": 12000.0,
-    "type": { "name": "depository", "display": "Savings", "group": "depository" },
-    "subtype": { "name": "savings", "display": "Savings" },
+    "type": {
+      "name": "depository",
+      "display": "Savings",
+      "group": "depository"
+    },
+    "subtype": {
+      "name": "savings",
+      "display": "Savings"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -42,8 +66,18 @@
     "isManual": false,
     "icon": "bank",
     "mask": "8765",
-    "institution": { "id": "ins-1", "name": "First Test Bank", "logo": "https://cdn.example.com/logos/ftb.png", "url": "https://firsttestbank.example.com" },
-    "credential": { "dataProvider": "PLAID", "institution": { "name": "First Test Bank" } }
+    "institution": {
+      "id": "ins-1",
+      "name": "First Test Bank",
+      "logo": "https://cdn.example.com/logos/ftb.png",
+      "url": "https://firsttestbank.example.com"
+    },
+    "credential": {
+      "dataProvider": "PLAID",
+      "institution": {
+        "name": "First Test Bank"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -52,8 +86,15 @@
     "currentBalance": -1450.75,
     "displayBalance": -1450.75,
     "signedBalance": -1450.75,
-    "type": { "name": "credit", "display": "Credit Card", "group": "credit" },
-    "subtype": { "name": "credit_card", "display": "Credit Card" },
+    "type": {
+      "name": "credit",
+      "display": "Credit Card",
+      "group": "credit"
+    },
+    "subtype": {
+      "name": "credit_card",
+      "display": "Credit Card"
+    },
     "isAsset": false,
     "isLiability": true,
     "isHidden": false,
@@ -65,8 +106,18 @@
     "isManual": false,
     "icon": "credit-card",
     "mask": "1111",
-    "institution": { "id": "ins-2", "name": "Card Issuer Co", "logo": "https://cdn.example.com/logos/card.png", "url": "https://cardissuer.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Card Issuer Co" } }
+    "institution": {
+      "id": "ins-2",
+      "name": "Card Issuer Co",
+      "logo": "https://cdn.example.com/logos/card.png",
+      "url": "https://cardissuer.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Card Issuer Co"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -75,8 +126,15 @@
     "currentBalance": 25000.0,
     "displayBalance": 25000.0,
     "signedBalance": 25000.0,
-    "type": { "name": "brokerage", "display": "Brokerage", "group": "brokerage" },
-    "subtype": { "name": "brokerage", "display": "Brokerage" },
+    "type": {
+      "name": "brokerage",
+      "display": "Brokerage",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "brokerage",
+      "display": "Brokerage"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -88,8 +146,18 @@
     "isManual": false,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-3", "name": "Broker House", "logo": "https://cdn.example.com/logos/broker.png", "url": "https://brokerhouse.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Broker House" } }
+    "institution": {
+      "id": "ins-3",
+      "name": "Broker House",
+      "logo": "https://cdn.example.com/logos/broker.png",
+      "url": "https://brokerhouse.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Broker House"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -98,8 +166,15 @@
     "currentBalance": 80000.0,
     "displayBalance": 80000.0,
     "signedBalance": 80000.0,
-    "type": { "name": "brokerage", "display": "401(k)", "group": "brokerage" },
-    "subtype": { "name": "st_401k", "display": "401(k)" },
+    "type": {
+      "name": "brokerage",
+      "display": "401(k)",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "st_401k",
+      "display": "401(k)"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -111,8 +186,18 @@
     "isManual": false,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-3", "name": "Broker House", "logo": "https://cdn.example.com/logos/broker.png", "url": "https://brokerhouse.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Broker House" } }
+    "institution": {
+      "id": "ins-3",
+      "name": "Broker House",
+      "logo": "https://cdn.example.com/logos/broker.png",
+      "url": "https://brokerhouse.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Broker House"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -121,8 +206,15 @@
     "currentBalance": 3200.0,
     "displayBalance": 3200.0,
     "signedBalance": 3200.0,
-    "type": { "name": "brokerage", "display": "Cryptocurrency", "group": "brokerage" },
-    "subtype": { "name": "cryptocurrency", "display": "Cryptocurrency" },
+    "type": {
+      "name": "brokerage",
+      "display": "Cryptocurrency",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "cryptocurrency",
+      "display": "Cryptocurrency"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -134,8 +226,18 @@
     "isManual": false,
     "icon": "currency-bitcoin",
     "mask": null,
-    "institution": { "id": "ins-4", "name": "Coinbase", "logo": "https://cdn.example.com/logos/coinbase.png", "url": "https://coinbase.example.com" },
-    "credential": { "dataProvider": "COINBASE", "institution": { "name": "Coinbase" } }
+    "institution": {
+      "id": "ins-4",
+      "name": "Coinbase",
+      "logo": "https://cdn.example.com/logos/coinbase.png",
+      "url": "https://coinbase.example.com"
+    },
+    "credential": {
+      "dataProvider": "COINBASE",
+      "institution": {
+        "name": "Coinbase"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -144,8 +246,15 @@
     "currentBalance": 15000.0,
     "displayBalance": 15000.0,
     "signedBalance": 15000.0,
-    "type": { "name": "brokerage", "display": "IRA", "group": "brokerage" },
-    "subtype": { "name": "ira", "display": "IRA" },
+    "type": {
+      "name": "brokerage",
+      "display": "IRA",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "ira",
+      "display": "IRA"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -157,8 +266,18 @@
     "isManual": false,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-3", "name": "Broker House", "logo": "https://cdn.example.com/logos/broker.png", "url": "https://brokerhouse.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Broker House" } }
+    "institution": {
+      "id": "ins-3",
+      "name": "Broker House",
+      "logo": "https://cdn.example.com/logos/broker.png",
+      "url": "https://brokerhouse.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Broker House"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -167,8 +286,15 @@
     "currentBalance": 9000.0,
     "displayBalance": 9000.0,
     "signedBalance": 9000.0,
-    "type": { "name": "brokerage", "display": "Roth IRA", "group": "brokerage" },
-    "subtype": { "name": "roth", "display": "Roth IRA" },
+    "type": {
+      "name": "brokerage",
+      "display": "Roth IRA",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "roth",
+      "display": "Roth IRA"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -180,8 +306,18 @@
     "isManual": false,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-3", "name": "Broker House", "logo": "https://cdn.example.com/logos/broker.png", "url": "https://brokerhouse.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Broker House" } }
+    "institution": {
+      "id": "ins-3",
+      "name": "Broker House",
+      "logo": "https://cdn.example.com/logos/broker.png",
+      "url": "https://brokerhouse.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Broker House"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -190,8 +326,15 @@
     "currentBalance": 4100.0,
     "displayBalance": 4100.0,
     "signedBalance": 4100.0,
-    "type": { "name": "brokerage", "display": "HSA", "group": "brokerage" },
-    "subtype": { "name": "health_savings_account", "display": "Health Savings Account" },
+    "type": {
+      "name": "brokerage",
+      "display": "HSA",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "health_savings_account",
+      "display": "Health Savings Account"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -203,8 +346,18 @@
     "isManual": false,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-3", "name": "Broker House", "logo": "https://cdn.example.com/logos/broker.png", "url": "https://brokerhouse.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Broker House" } }
+    "institution": {
+      "id": "ins-3",
+      "name": "Broker House",
+      "logo": "https://cdn.example.com/logos/broker.png",
+      "url": "https://brokerhouse.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Broker House"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -213,8 +366,15 @@
     "currentBalance": null,
     "displayBalance": 21000.0,
     "signedBalance": 21000.0,
-    "type": { "name": "brokerage", "display": "Pension", "group": "brokerage" },
-    "subtype": { "name": "pension", "display": "Pension" },
+    "type": {
+      "name": "brokerage",
+      "display": "Pension",
+      "group": "brokerage"
+    },
+    "subtype": {
+      "name": "pension",
+      "display": "Pension"
+    },
     "isAsset": true,
     "isLiability": false,
     "isHidden": false,
@@ -226,8 +386,18 @@
     "isManual": true,
     "icon": "trending-up",
     "mask": null,
-    "institution": { "id": "ins-5", "name": "Pension Co", "logo": "https://cdn.example.com/logos/pension.png", "url": "https://pensionco.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Pension Co" } }
+    "institution": {
+      "id": "ins-5",
+      "name": "Pension Co",
+      "logo": "https://cdn.example.com/logos/pension.png",
+      "url": "https://pensionco.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Pension Co"
+      }
+    }
   },
   {
     "__typename": "Account",
@@ -236,8 +406,15 @@
     "currentBalance": -200.0,
     "displayBalance": -200.0,
     "signedBalance": -200.0,
-    "type": { "name": "credit", "display": "Credit Card", "group": "credit" },
-    "subtype": { "name": "credit_card", "display": "Credit Card" },
+    "type": {
+      "name": "credit",
+      "display": "Credit Card",
+      "group": "credit"
+    },
+    "subtype": {
+      "name": "credit_card",
+      "display": "Credit Card"
+    },
     "isAsset": false,
     "isLiability": true,
     "isHidden": true,
@@ -249,7 +426,57 @@
     "isManual": false,
     "icon": "credit-card",
     "mask": "9999",
-    "institution": { "id": "ins-2", "name": "Card Issuer Co", "logo": "https://cdn.example.com/logos/card.png", "url": "https://cardissuer.example.com" },
-    "credential": { "dataProvider": "FINICITY", "institution": { "name": "Card Issuer Co" } }
+    "institution": {
+      "id": "ins-2",
+      "name": "Card Issuer Co",
+      "logo": "https://cdn.example.com/logos/card.png",
+      "url": "https://cardissuer.example.com"
+    },
+    "credential": {
+      "dataProvider": "FINICITY",
+      "institution": {
+        "name": "Card Issuer Co"
+      }
+    }
+  },
+  {
+    "__typename": "Account",
+    "id": "acc-hidden-only",
+    "displayName": "Side Savings (Hidden)",
+    "currentBalance": 500.0,
+    "displayBalance": 500.0,
+    "signedBalance": 500.0,
+    "type": {
+      "name": "depository",
+      "display": "Cash",
+      "group": "cash"
+    },
+    "subtype": {
+      "name": "savings",
+      "display": "Savings"
+    },
+    "isAsset": true,
+    "isLiability": false,
+    "isHidden": true,
+    "deactivatedAt": null,
+    "includeInNetWorth": true,
+    "hideFromList": true,
+    "hideInBudget": false,
+    "hideTransactionsFromReports": false,
+    "isManual": false,
+    "icon": "bank",
+    "mask": "7777",
+    "institution": {
+      "id": "ins-1",
+      "name": "First Test Bank",
+      "logo": "https://cdn.example.com/logos/bank.png",
+      "url": "https://bank.example.com"
+    },
+    "credential": {
+      "dataProvider": "PLAID",
+      "institution": {
+        "name": "First Test Bank"
+      }
+    }
   }
 ]

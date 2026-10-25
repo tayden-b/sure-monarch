@@ -109,7 +109,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_210000) do
     t.boolean "enable_category_matcher", default: true, null: false
     t.boolean "exclude_from_reports", default: false, null: false
     t.uuid "family_id", null: false
+    t.boolean "hide_from_list", default: false, null: false
+    t.boolean "hide_in_budget", default: false, null: false
     t.uuid "import_id"
+    t.boolean "include_in_net_worth", default: true, null: false
     t.string "institution_domain"
     t.string "institution_name"
     t.jsonb "locked_attributes", default: {}
@@ -403,7 +406,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_210000) do
   end
 
   create_table "categories", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.string "classification_unused", default: "expense", null: false
+    t.uuid "category_group_id"
+    t.string "classification", default: "expense", null: false
     t.string "color", default: "#6172F3", null: false
     t.datetime "created_at", null: false
     t.uuid "family_id", null: false
@@ -412,6 +416,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_210000) do
     t.string "name", null: false
     t.uuid "parent_id"
     t.datetime "updated_at", null: false
+    t.index ["category_group_id"], name: "index_categories_on_category_group_id"
     t.index ["family_id", "last_used_at"], name: "index_categories_on_family_id_and_last_used_at"
     t.index ["family_id", "name"], name: "index_categories_on_family_id_and_name", unique: true
     t.index ["family_id"], name: "index_categories_on_family_id"
@@ -432,6 +437,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_210000) do
     t.index ["family_id", "agreed", "created_at"], name: "index_categorization_comparisons_on_family_agreement"
     t.index ["family_id"], name: "index_categorization_comparisons_on_family_id"
     t.index ["transaction_id"], name: "index_categorization_comparisons_on_transaction_id"
+  end
+
+  create_table "category_groups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "classification", null: false
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.uuid "family_id", null: false
+    t.string "name", null: false
+    t.integer "position"
+    t.datetime "updated_at", null: false
+    t.index ["family_id", "position"], name: "index_category_groups_on_family_id_and_position"
+    t.index ["family_id"], name: "index_category_groups_on_family_id"
   end
 
   create_table "chats", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2986,9 +3003,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_25_210000) do
   add_foreign_key "budget_shares", "users", column: "viewer_id"
   add_foreign_key "budgets", "families"
   add_foreign_key "budgets", "users", on_delete: :cascade
+  add_foreign_key "categories", "category_groups"
   add_foreign_key "categories", "families"
   add_foreign_key "categorization_comparisons", "families"
   add_foreign_key "categorization_comparisons", "transactions", on_delete: :nullify
+  add_foreign_key "category_groups", "families"
   add_foreign_key "chats", "users"
   add_foreign_key "coinbase_accounts", "coinbase_items"
   add_foreign_key "coinbase_items", "families"

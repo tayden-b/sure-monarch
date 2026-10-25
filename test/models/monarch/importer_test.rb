@@ -23,11 +23,10 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert import.complete?
     report = import.report["collections"]
 
-    assert_equal 11, report["accounts"]["archive_count"]
-    assert_equal 11, report["accounts"]["created"]
+    assert_equal 12, report["accounts"]["archive_count"]
+    assert_equal 12, report["accounts"]["created"]
     assert_equal 8, report["categories"]["archive_count"]
-    # "Income" group dedupes onto the fixture family's existing Income category
-    assert_equal 3, report["category_groups"].values_at("created", "updated").sum
+    assert_equal 3, report["category_groups"]["created"]
     assert_equal 2, report["tags"]["created"]
     assert_equal 8, report["transactions"]["created"]
     assert_equal 7, report["balance_history"]["created"]
@@ -76,8 +75,20 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
 
     hidden = mapping_for("accounts", "acc-hidden").record
     assert_equal "disabled", hidden.status
-    assert hidden.exclude_from_reports?
     assert_equal Date.new(2026, 3, 4), hidden.disabled_at.to_date
+    assert hidden.hide_from_list?
+    assert_not hidden.include_in_net_worth?
+    assert hidden.exclude_from_reports?
+    assert hidden.hide_in_budget?
+
+    # isHidden without deactivatedAt stays active: hidden from lists but
+    # still counted in net worth and reports (Monarch semantics).
+    list_hidden = mapping_for("accounts", "acc-hidden-only").record
+    assert_equal "active", list_hidden.status
+    assert list_hidden.hide_from_list?
+    assert list_hidden.include_in_net_worth?
+    assert_not list_hidden.exclude_from_reports?
+    assert_not list_hidden.hide_in_budget?
 
     checking = mapping_for("accounts", "acc-checking").record
     assert_equal "active", checking.status
@@ -135,13 +146,43 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal %w[reimbursable], txn2.tags.pluck(:name)
   end
 
-  test "categories land under their group's parent category" do
+  test "category groups carry Monarch type, order and color" do
     run_import
 
+    expense_group = mapping_for("category_groups", "cg-expense").record
+    assert_instance_of CategoryGroup, expense_group
+    assert_equal "Everyday Expenses", expense_group.name
+    assert_equal "expense", expense_group.classification
+    assert_equal 1, expense_group.position
+    assert_equal "#4da568", expense_group.color
+
+    income_group = mapping_for("category_groups", "cg-income").record
+    assert_equal "income", income_group.classification
+    assert_equal 2, income_group.position
+    assert_nil income_group.color # Monarch group colors can be null — preserved
+
+    assert_equal "transfer", mapping_for("category_groups", "cg-transfer").record.classification
+  end
+
+  test "categories land in their group and inherit its classification" do
+    run_import
+
+    expense_group = mapping_for("category_groups", "cg-expense").record
+
     groceries = mapping_for("categories", "cat-groceries").record
-    assert_equal "Everyday Expenses", groceries.parent.name
-    assert_equal groceries.parent, mapping_for("categories", "cat-gas").record.parent
-    assert_nil mapping_for("categories", "cat-groceries").record.parent.parent
+    assert_equal expense_group, groceries.category_group
+    assert_equal "expense", groceries.classification
+    assert_nil groceries.parent # Monarch has no subcategories — imported flat
+
+    # "Restaurants" collides with an existing subcategory — disambiguated by group name
+    dining = mapping_for("categories", "cat-dining").record
+    assert_equal "Everyday Expenses — Restaurants", dining.name
+    assert_equal expense_group, dining.category_group
+
+    assert_equal "income", mapping_for("categories", "cat-paychecks").record.classification
+    assert_equal "income", mapping_for("categories", "cat-interest").record.classification
+    assert_equal "transfer", mapping_for("categories", "cat-transfer").record.classification
+    assert_equal "transfer", mapping_for("categories", "cat-ccpayment").record.classification
   end
 
   test "balance history becomes reconciliation valuations" do
@@ -225,7 +266,7 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     import = run_import
 
     totals = import.report["account_totals"]
-    assert_equal 11, totals.size
+    assert_equal 12, totals.size
     checking = totals["acc-checking"]
     # Monarch: -84.32 + 2450 - 52 - 1200 - 300 - 25 = 788.68
     assert_equal "788.68", checking["archive_total"]
@@ -235,16 +276,16 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
 
   test "idempotent: second run updates in place, no duplicates" do
     run_import
-    counts = [ Entry, Account, Category, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
+    counts = [ Entry, Account, Category, CategoryGroup, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
 
     second = run_import
     assert second.complete?
-    assert_equal counts, [ Entry, Account, Category, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
+    assert_equal counts, [ Entry, Account, Category, CategoryGroup, Tag, Merchant, Holding, Rule, RecurringTransaction, Budget, Goal, Valuation ].map(&:count)
 
     report = second.report["collections"]
     assert_equal 8, report["transactions"]["updated"]
     assert_equal 0, report["transactions"]["created"]
-    assert_equal 11, report["accounts"]["updated"]
+    assert_equal 12, report["accounts"]["updated"]
   end
 
   test "dry run writes nothing but still reports" do
@@ -295,5 +336,6 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_empty Entry.where(source: "monarch")
     assert_empty @family.accounts.where(name: "Everyday Checking")
     assert_empty @family.categories.where(name: "Groceries")
+    assert_empty @family.category_groups.where(name: "Everyday Expenses")
   end
 end

@@ -22,8 +22,12 @@ class BalanceSheet::ClassificationGroup
 
   def total
     accounts.select { |a| a.respond_to?(:included_in_finances?) ? a.included_in_finances? : true }
-            .reject { |a| a.respond_to?(:exclude_from_reports?) && a.exclude_from_reports? }
+            .reject { |a| a.respond_to?(:include_in_net_worth?) && !a.include_in_net_worth? }
             .sum(&:converted_balance)
+  end
+
+  def listed_account_groups
+    account_groups.select { |group| group.listed_accounts.any? }
   end
 
   def syncing?

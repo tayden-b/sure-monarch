@@ -431,7 +431,7 @@ class Family::DataImporter
         category.assign_attributes(
           name: data["name"],
           color: data["color"] || Category::UNCATEGORIZED_COLOR,
-          classification_unused: data["classification_unused"] || data["classification"] || "expense",
+          classification: data["classification"] || data["classification_unused"] || "expense",
           lucide_icon: data["lucide_icon"] || "shapes"
         )
         category.save!
@@ -1530,7 +1530,7 @@ class Family::DataImporter
       rule_categories_by_name[name] ||= @family.categories.create!(
         name: name,
         color: Category::UNCATEGORIZED_COLOR,
-        classification_unused: "expense",
+        classification: "expense",
         lucide_icon: "shapes"
       )
     end

@@ -2,11 +2,12 @@ class AccountsController < ApplicationController
   include StreamExtensions
 
   before_action :set_account, only: %i[show sparkline sync set_default remove_default]
-  before_action :set_manageable_account, only: %i[toggle_active toggle_exclude_from_reports destroy unlink confirm_unlink select_provider]
+  before_action :set_manageable_account, only: %i[toggle_active toggle_exclude_from_reports toggle_hide_from_list toggle_include_in_net_worth toggle_hide_in_budget destroy unlink confirm_unlink select_provider]
   before_action :ensure_linked_account, only: %i[confirm_unlink unlink]
   include Periodable
 
   def index
+    @view = params[:view].presence_in(%w[connections type]) || "type"
     @accessible_account_ids = Current.user.accessible_accounts.pluck(:id)
     @manual_accounts = family.accounts
           .listable_manual
@@ -56,6 +57,19 @@ class AccountsController < ApplicationController
       visible = item.accounts_visible_to(allowed_ids)
       [ item.id, { accounts: visible, address_count: item.address_count_for(visible) } ]
     end
+
+    # Flat collection for the type-first view: every accessible account
+    # regardless of provider connection, one list grouped by type. Disabled
+    # accounts stay visible (matching the connections view); pending-deletion
+    # stays out, matching listable_manual.
+    index_accounts = family.accounts
+      .where(id: @accessible_account_ids)
+      .where.not(status: :pending_deletion)
+      .with_attached_logo
+      .includes(:accountable, :account_providers, :plaid_account, :simplefin_account)
+      .order(:name)
+      .to_a
+    @type_accounts, @hidden_accounts = index_accounts.partition { |a| !a.hide_from_list? }
 
     preload_latest_sync_metadata_for_index!
 
@@ -216,10 +230,31 @@ class AccountsController < ApplicationController
   end
 
   # Toggles the exclude_from_reports flag on the account and redirects to the
-  # account list. The flag controls whether the account's data appears in
-  # financial reports, dashboards, and exports.
+  # account list. The flag controls whether the account's transactions appear
+  # in reports (cash flow, income statements, exports).
   def toggle_exclude_from_reports
     @account.update!(exclude_from_reports: !@account.exclude_from_reports?)
+    redirect_to accounts_path
+  end
+
+  # Hidden from account lists and sidebars; the balance still counts in net
+  # worth, reports, and budgets.
+  def toggle_hide_from_list
+    @account.update!(hide_from_list: !@account.hide_from_list?)
+    redirect_to accounts_path
+  end
+
+  # Excludes the account's balance from net worth and net-worth history; the
+  # account stays listed and its transactions still reach reports/budgets.
+  def toggle_include_in_net_worth
+    @account.update!(include_in_net_worth: !@account.include_in_net_worth?)
+    redirect_to accounts_path
+  end
+
+  # Excludes the account's transactions from budget actuals and the cash
+  # panel; the balance still counts in net worth and reports.
+  def toggle_hide_in_budget
+    @account.update!(hide_in_budget: !@account.hide_in_budget?)
     redirect_to accounts_path
   end
 

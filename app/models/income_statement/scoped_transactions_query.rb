@@ -11,10 +11,11 @@
 module IncomeStatement::ScopedTransactionsQuery
   private
     # Contributions and loan payments are cash outflows recorded as negative
-    # amounts, so they always classify as expense; other negative amounts
-    # classify as income.
+    # amounts, so they always classify as expense. Categorized transactions
+    # then follow their category's classification (income / expense /
+    # transfer), and only uncategorized ones fall back to the sign.
     def classification_sql(t)
-      "CASE WHEN #{t}.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END"
+      "CASE WHEN #{t}.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN c.classification IS NOT NULL THEN c.classification WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END"
     end
 
     # Entry amount converted to the family currency at the day's exchange
@@ -26,6 +27,12 @@ module IncomeStatement::ScopedTransactionsQuery
 
     def entries_join_sql(t)
       "JOIN entries ae ON ae.entryable_id = #{t}.id AND ae.entryable_type = 'Transaction'"
+    end
+
+    # classification_sql reads c.classification, so every query that emits a
+    # classification column needs this join (aliased `c` everywhere).
+    def categories_join_sql(t)
+      "LEFT JOIN categories c ON c.id = #{t}.category_id"
     end
 
     def accounts_join_sql
@@ -59,6 +66,15 @@ module IncomeStatement::ScopedTransactionsQuery
 
     def pending_providers_sql(t = "t")
       Transaction.pending_providers_sql(t)
+    end
+
+    # The account-visibility flag this statement filters on. Report
+    # statements hide `exclude_from_reports` accounts' transactions; budget
+    # statements hide `hide_in_budget` ones. Whitelisted because it is
+    # inlined into SQL.
+    ACCOUNT_FLAG_COLUMNS = %w[exclude_from_reports hide_in_budget].freeze
+    def account_flag_column
+      @account_flag.presence_in(ACCOUNT_FLAG_COLUMNS) || "exclude_from_reports"
     end
 
     # Tax-advantaged accounts (401k, IRA, HSA, etc.) are retirement savings,

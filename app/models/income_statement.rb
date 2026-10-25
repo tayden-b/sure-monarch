@@ -11,10 +11,14 @@ class IncomeStatement
   # budget's "owned accounts only" view) instead of inferring it from
   # `user.finance_accounts`. `user` is still kept for cache-key/estimate
   # purposes when both are given.
-  def initialize(family, user: nil, accounts: nil)
+  # `purpose:` selects which account flag filters transactions —
+  # `:reports` (default) hides `exclude_from_reports` accounts, `:budget`
+  # hides `hide_in_budget` accounts — matching Monarch's independent flags.
+  def initialize(family, user: nil, accounts: nil, purpose: :reports)
     @family = family
     @user = user || Current.user
     @accounts = accounts
+    @purpose = purpose.to_sym
   end
 
   def totals(transactions_scope: nil, date_range:)
@@ -121,7 +125,7 @@ class IncomeStatement
   # dashboard's cumulative spending chart. Same scoping as `expense_totals`.
   def daily_expense_series(period:)
     Rails.cache.fetch([
-      "income_statement", "daily_expense_series", family.id, user&.id,
+      "income_statement", "daily_expense_series", family.id, user&.id, @purpose,
       included_account_ids_hash, period.start_date, period.end_date,
       *cache_freshness_key
     ]) do
@@ -129,7 +133,8 @@ class IncomeStatement
         family,
         transactions_scope: family.transactions.visible.excluding_pending.in_period(period),
         date_range: period.date_range,
-        included_account_ids: included_account_ids
+        included_account_ids: included_account_ids,
+        account_flag: account_flag
       ).call
     end
   end
@@ -141,15 +146,16 @@ class IncomeStatement
     totals(transactions_scope: scope, date_range: period.date_range)
   end
 
-  # Accounts actually reflected in totals/totals_for: visible, not excluded
-  # from reports, not tax-advantaged, and (when scoped to a user) included in
-  # that user's finances. Callers offering an account filter (e.g. a
-  # dashboard widget) should build their options from this, not a broader
-  # "accessible accounts" list, or selecting an ineligible account silently
-  # computes to zero instead of the totals it actually appears in elsewhere.
+  # Accounts actually reflected in totals/totals_for: visible, not flagged
+  # out of this statement's purpose (reports or budget), not tax-advantaged,
+  # and (when scoped to a user) included in that user's finances. Callers
+  # offering an account filter (e.g. a dashboard widget) should build their
+  # options from this, not a broader "accessible accounts" list, or
+  # selecting an ineligible account silently computes to zero instead of
+  # the totals it actually appears in elsewhere.
   def eligible_accounts
     @eligible_accounts ||= begin
-      scope = family.accounts.visible.included_in_reports
+      scope = family.accounts.visible.where(account_flag => false)
       tax_advantaged_ids = family.tax_advantaged_account_ids
       scope = scope.where.not(id: tax_advantaged_ids) if tax_advantaged_ids.present?
       scope = scope.merge(Account.included_in_finances_for(user)) if user
@@ -249,15 +255,22 @@ class IncomeStatement
     def family_stats(interval: "month")
       @family_stats ||= {}
       @family_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "family_stats", family.id, user&.id, interval, included_account_ids_hash, family.entries_cache_version
-      ]) { FamilyStats.new(family, interval:, account_ids: included_account_ids).call }
+        "income_statement", "family_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash, family.entries_cache_version
+      ]) { FamilyStats.new(family, interval:, account_ids: included_account_ids, account_flag: account_flag).call }
     end
 
     def category_stats(interval: "month")
       @category_stats ||= {}
       @category_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "category_stats", family.id, user&.id, interval, included_account_ids_hash, family.entries_cache_version
-      ]) { CategoryStats.new(family, interval:, account_ids: included_account_ids).call }
+        "income_statement", "category_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash, family.entries_cache_version
+      ]) { CategoryStats.new(family, interval:, account_ids: included_account_ids, account_flag: account_flag).call }
+    end
+
+    # Account flag column matching this statement's purpose (see
+    # #initialize): budget statements filter `hide_in_budget`, all other
+    # statements filter `exclude_from_reports`.
+    def account_flag
+      @purpose == :budget ? "hide_in_budget" : "exclude_from_reports"
     end
 
     def included_account_ids
@@ -287,7 +300,7 @@ class IncomeStatement
 
       Rails.cache.fetch([
         "income_statement", "totals_query", "v2", family.id, user&.id, included_account_ids_hash, sql_hash, date_range.begin, date_range.end, *cache_freshness_key
-      ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range, included_account_ids: included_account_ids).call }
+      ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range, included_account_ids: included_account_ids, account_flag: account_flag).call }
     end
 
     def monetizable_currency

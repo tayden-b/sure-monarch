@@ -1,10 +1,11 @@
 class IncomeStatement::FamilyStats
   include IncomeStatement::ScopedTransactionsQuery
 
-  def initialize(family, interval: "month", account_ids: nil)
+  def initialize(family, interval: "month", account_ids: nil, account_flag: nil)
     @family = family
     @interval = interval
     @account_ids = account_ids
+    @account_flag = account_flag
   end
 
   def call
@@ -42,12 +43,13 @@ class IncomeStatement::FamilyStats
             SUM(#{converted_amount_sql("t")}) as total
           FROM transactions t
           #{entries_join_sql("t")}
+          #{categories_join_sql("t")}
           #{accounts_join_sql}
           #{exchange_rates_join_sql}
           WHERE a.family_id = :family_id
             AND t.kind NOT IN (#{budget_excluded_kinds_sql})
             AND ae.excluded = false
-            AND a.exclude_from_reports = false
+            AND a.#{account_flag_column} = false
             #{pending_providers_sql}
             #{exclude_tax_advantaged_sql}
             #{scope_to_account_ids_sql}

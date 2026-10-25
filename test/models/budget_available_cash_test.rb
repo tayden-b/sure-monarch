@@ -15,11 +15,18 @@ class BudgetAvailableCashTest < ActiveSupport::TestCase
     assert_equal cash.balance.to_d, @budget.available_cash
   end
 
-  test "leaves out accounts excluded from reports" do
+  test "leaves out accounts hidden from the budget" do
+    depository(2_000)
+    depository(500).update!(hide_in_budget: true)
+
+    assert_equal 2_000, @budget.available_cash
+  end
+
+  test "reports-excluded accounts still count as available cash" do
     depository(2_000)
     depository(500).update!(exclude_from_reports: true)
 
-    assert_equal 2_000, @budget.available_cash
+    assert_equal 2_500, @budget.available_cash
   end
 
   test "subtracts what a goal has earmarked on those accounts" do

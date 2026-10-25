@@ -187,28 +187,28 @@ class Monarch::Importer
       group_record_ids = {}
 
       each_record("category_groups") do |g|
-        category = family.categories.find_or_initialize_by(name: g["name"], parent_id: nil)
-        category.assign_attributes(
-          color: normalized_color(g["color"], seed: g["name"]),
-          lucide_icon: "shapes"
-        )
-        track(category, "category_groups") do
-          category.save!
-          group_record_ids[g["id"]] = category.id
-          record_mapping!("category_groups", g["id"], category, g)
+        group = category_group_for(g)
+        group.name = g["name"]
+        group.classification = g["type"].presence_in(CategoryGroup::CLASSIFICATIONS) || "expense"
+        group.position = g["order"]
+        group.color = normalized_group_color(g["color"])
+        track(group, "category_groups") do
+          group.save!
+          group_record_ids[g["id"]] = group.id
+          record_mapping!("category_groups", g["id"], group, g)
         end
       end
 
       each_record("categories") do |c|
-        parent_id = group_record_ids[c.dig("group", "id")] ||
-                    mapped_record_id("category_groups", c.dig("group", "id"))
-        parent = parent_id && family.categories.find_by(id: parent_id)
+        group_id = group_record_ids[c.dig("group", "id")] ||
+                   mapped_record_id("category_groups", c.dig("group", "id"))
+        group = group_id && family.category_groups.find_by(id: group_id)
 
-        category = find_category_for(c, parent)
+        category = find_category_for(c, group)
         category.assign_attributes(
-          parent: parent,
-          color: parent&.color || normalized_color(nil, seed: c["name"]),
-          lucide_icon: "shapes"
+          category_group: group,
+          color: group&.color.presence || normalized_color(nil, seed: c["name"]),
+          lucide_icon: Category.suggested_icon(c["name"])
         )
         track(category, "categories") do
           category.save!
@@ -217,16 +217,34 @@ class Monarch::Importer
       end
     end
 
+    # Monarch group ids are stable, so the mapping is authoritative on
+    # re-import; otherwise match on name + classification so groups that
+    # share a name but differ in type stay distinct.
+    def category_group_for(g)
+      mapped = family.category_groups.find_by(id: mapped_record_id("category_groups", g["id"]))
+      mapped || family.category_groups.find_or_initialize_by(
+        name: g["name"],
+        classification: g["type"].presence_in(CategoryGroup::CLASSIFICATIONS) || "expense"
+      )
+    end
+
+    # Group colors are optional in Monarch — preserve nulls rather than
+    # inventing one (member categories still get a seeded color since
+    # Category requires it).
+    def normalized_group_color(color)
+      color.to_s.match?(/\A#[0-9a-fA-F]{6}\z/) ? color : nil
+    end
+
     # Category names are unique per family in Sure but not per group in
     # Monarch; disambiguate with the group name when two groups reuse a name.
-    def find_category_for(c, parent)
+    def find_category_for(c, group)
       category = family.categories.find_by(name: c["name"])
-      if category.nil? || category.parent_id == parent&.id
-        category || family.categories.build(name: c["name"], parent: parent)
-      elsif parent
-        family.categories.find_or_initialize_by(name: "#{parent.name} — #{c["name"]}", parent_id: parent.id)
+      if category.nil? || category.category_group_id == group&.id
+        category || family.categories.build(name: c["name"], category_group: group)
+      elsif group
+        family.categories.find_or_initialize_by(name: "#{group.name} — #{c["name"]}", category_group_id: group.id)
       else
-        family.categories.find_or_initialize_by(name: c["name"], parent_id: nil)
+        family.categories.find_or_initialize_by(name: c["name"], category_group_id: nil)
       end
     end
 
@@ -325,8 +343,10 @@ class Monarch::Importer
       cash_account = %w[Depository CreditCard Loan Property Vehicle OtherAsset OtherLiability].include?(accountable.class.name)
 
       deactivated_at = parse_date(r["deactivatedAt"])
-      hidden = r["isHidden"] == true
-      disabled = deactivated_at.present? || hidden
+      # Only `deactivatedAt` disables an account (stops sync). Monarch's
+      # `isHidden`/`hideFromList` hide the row from lists while its balance
+      # still counts, which maps to `hide_from_list` instead.
+      disabled = deactivated_at.present?
 
       institution = r["institution"] || {}
 
@@ -336,8 +356,11 @@ class Monarch::Importer
         balance: balance,
         cash_balance: cash_account ? balance : 0,
         status: disabled ? "disabled" : "active",
-        disabled_at: disabled ? (deactivated_at&.to_time || Time.current) : nil,
-        exclude_from_reports: r["includeInNetWorth"] == false || r["hideTransactionsFromReports"] == true,
+        disabled_at: deactivated_at&.to_time,
+        hide_from_list: r["isHidden"] == true || r["hideFromList"] == true,
+        include_in_net_worth: r["includeInNetWorth"] != false,
+        exclude_from_reports: r["hideTransactionsFromReports"] == true,
+        hide_in_budget: r["hideInBudget"] == true,
         institution_name: institution["name"].presence,
         institution_domain: institution_domain(institution)
       }

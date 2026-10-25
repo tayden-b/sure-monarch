@@ -570,6 +570,30 @@ class AccountTest < ActiveSupport::TestCase
     assert_not_includes results, excluded
   end
 
+  test "visibility flag scopes are independent" do
+    included = @family.accounts.create! name: "Included", balance: 100, currency: "USD", accountable: Depository.new
+    list_hidden = @family.accounts.create! name: "List hidden", balance: 100, currency: "USD", accountable: Depository.new, hide_from_list: true
+    nw_excluded = @family.accounts.create! name: "NW excluded", balance: 100, currency: "USD", accountable: Depository.new, include_in_net_worth: false
+    budget_hidden = @family.accounts.create! name: "Budget hidden", balance: 100, currency: "USD", accountable: Depository.new, hide_in_budget: true
+
+    assert_includes @family.accounts.listed, included
+    assert_not_includes @family.accounts.listed, list_hidden
+    assert_includes @family.accounts.listed, nw_excluded
+
+    assert_includes @family.accounts.included_in_net_worth, list_hidden
+    assert_not_includes @family.accounts.included_in_net_worth, nw_excluded
+
+    assert_includes @family.accounts.included_in_budget, list_hidden
+    assert_includes @family.accounts.included_in_budget, nw_excluded
+    assert_not_includes @family.accounts.included_in_budget, budget_hidden
+
+    # A reports-excluded account still counts in net worth and the budget.
+    reports_excluded = @family.accounts.create! name: "Reports excluded", balance: 100, currency: "USD", accountable: Depository.new, exclude_from_reports: true
+    assert_includes @family.accounts.included_in_net_worth, reports_excluded
+    assert_includes @family.accounts.included_in_budget, reports_excluded
+    assert_not_includes @family.accounts.included_in_reports, reports_excluded
+  end
+
   test "auto_share_with_family creates shares for all non-owner members" do
     @family.update!(default_account_sharing: "private")
 

@@ -191,6 +191,65 @@ class BudgetTest < ActiveSupport::TestCase
     )
   end
 
+  test "hide_in_budget account's transactions are excluded from actuals" do
+    family = families(:dylan_family)
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+
+    healthcare = Category.create!(
+      name: "Hidden Healthcare #{Time.now.to_f}",
+      family: family,
+      color: "#e74c3c"
+    )
+
+    budget.sync_budget_categories
+    budget_category = budget.budget_categories.find_by(category: healthcare)
+    budget_category.update!(budgeted_spending: 200)
+
+    hidden_account = Account.create!(
+      family: family,
+      accountable: Depository.new,
+      name: "Budget-hidden account",
+      status: "active",
+      currency: "USD",
+      balance: 1000,
+      hide_in_budget: true
+    )
+    visible_account = accounts(:depository)
+
+    # Same spend in each account; only the visible account's counts.
+    Entry.create!(
+      account: hidden_account,
+      entryable: Transaction.create!(category: healthcare),
+      date: Date.current,
+      name: "Hidden spend",
+      amount: 400,
+      currency: "USD"
+    )
+    Entry.create!(
+      account: visible_account,
+      entryable: Transaction.create!(category: healthcare),
+      date: Date.current,
+      name: "Visible spend",
+      amount: 300,
+      currency: "USD"
+    )
+
+    budget = Budget.find(budget.id)
+    budget.sync_budget_categories
+
+    assert_equal 300, budget.budget_category_actual_spending(
+      budget.budget_categories.find_by(category: healthcare)
+    )
+
+    # ...but the same spend still reaches the reports statement.
+    reports = IncomeStatement.new(family, user: nil).expense_totals(period: budget.period)
+    healthcare_total = reports.category_totals.find { |ct| ct.category == healthcare }.total
+    assert_equal 700, healthcare_total
+
+    # And the hidden account drops out of the cash-on-hand panel.
+    assert_not_includes budget.cash_accounts, hidden_account
+  end
+
   test "budget_category_actual_spending does not go below zero" do
     family = families(:dylan_family)
     budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)

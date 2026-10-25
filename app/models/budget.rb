@@ -170,9 +170,9 @@ class Budget < ApplicationRecord
     scope = family.transactions.visible.in_period(period)
 
     if user_id.present?
-      scope = scope.joins(:entry).where(entries: { account_id: family.accounts.where(owner_id: user_id).included_in_reports.select(:id) })
+      scope = scope.joins(:entry).where(entries: { account_id: family.accounts.where(owner_id: user_id).included_in_budget.select(:id) })
     elsif current_user
-      scope = scope.joins(:entry).where(entries: { account_id: family.accounts.accessible_by(current_user).included_in_reports.select(:id) })
+      scope = scope.joins(:entry).where(entries: { account_id: family.accounts.accessible_by(current_user).included_in_budget.select(:id) })
     end
 
     scope
@@ -198,7 +198,7 @@ class Budget < ApplicationRecord
   # accounts, the household one what the viewer can see — because a figure
   # labelled "available" must mean available to the person reading it.
   def cash_accounts
-    scope = family.accounts.visible.included_in_reports.where(accountable_type: "Depository")
+    scope = family.accounts.visible.included_in_budget.where(accountable_type: "Depository")
 
     if user_id.present?
       scope.where(owner_id: user_id)
@@ -511,7 +511,7 @@ class Budget < ApplicationRecord
       rate ? amount.to_d * rate : amount.to_d
     end
     def income_statement
-      @income_statement ||= family.income_statement(user: current_user, accounts: income_statement_accounts)
+      @income_statement ||= family.income_statement(user: current_user, accounts: income_statement_accounts, purpose: :budget)
     end
 
     # nil for the household budget (IncomeStatement falls back to whatever
@@ -522,7 +522,7 @@ class Budget < ApplicationRecord
     def income_statement_accounts
       return @income_statement_accounts if @income_statement_accounts
 
-      family.accounts.where(owner_id: user_id).included_in_reports if user_id.present?
+      family.accounts.where(owner_id: user_id).included_in_budget if user_id.present?
     end
 
     def net_totals

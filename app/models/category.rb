@@ -4,6 +4,8 @@ class Category < ApplicationRecord
 
   belongs_to :family
 
+  belongs_to :category_group, optional: true
+
   has_many :budget_categories, dependent: :destroy
   has_many :subcategories,
          -> { order(:name) },
@@ -28,7 +30,14 @@ class Category < ApplicationRecord
 
   validate :category_level_limit
 
-  before_save :inherit_color_from_parent
+  CLASSIFICATIONS = CategoryGroup::CLASSIFICATIONS
+
+  enum :classification, CLASSIFICATIONS.index_with { _1 }, scopes: false, validate: true
+
+  before_validation :infer_classification_from_name, on: :create
+  before_save :inherit_from_parent, if: :subcategory?
+  before_save :inherit_classification_from_group
+  after_save :sync_subcategories, if: -> { saved_change_to_classification? || saved_change_to_category_group_id? }
 
   scope :alphabetically, -> { order(:name) }
   scope :recently_used, -> { where.not(last_used_at: nil).order(last_used_at: :desc) }
@@ -39,9 +48,9 @@ class Category < ApplicationRecord
       .order(:name, :id)
   }
   scope :roots, -> { where(parent_id: nil) }
-  # Legacy scopes - classification removed; these now return all categories
-  scope :incomes, -> { all }
-  scope :expenses, -> { all }
+  scope :incomes, -> { where(classification: "income") }
+  scope :expenses, -> { where(classification: "expense") }
+  scope :transfers, -> { where(classification: "transfer") }
 
   COLORS = %w[#e99537 #4da568 #6471eb #db5a54 #df4e92 #c44fe9 #eb5429 #61c9ea #805dee #6ad28a]
 
@@ -204,6 +213,12 @@ class Category < ApplicationRecord
       "shapes"
     end
 
+    # Classification inferred from a bare category name, matching the set of
+    # names the classification backfill marks as income.
+    def suggested_classification(name)
+      name.to_s.strip.downcase.in?(%w[income incomes other\ income other\ incomes]) ? "income" : "expense"
+    end
+
     def icon_codes
       %w[
         ambulance apple award baby badge-dollar-sign banknote barcode bar-chart-3 bath
@@ -225,10 +240,11 @@ class Category < ApplicationRecord
     end
 
     def bootstrap!
-      default_categories.each do |name, color, icon|
+      default_categories.each do |name, color, icon, classification|
         find_or_create_by!(name: name) do |category|
           category.color = color
           category.lucide_icon = icon
+          category.classification = classification
         end
       end
     end
@@ -314,34 +330,63 @@ class Category < ApplicationRecord
 
       def default_categories
         [
-          [ I18n.t("models.category.defaults.income"),                "#22c55e", "circle-dollar-sign" ],
-          [ I18n.t("models.category.defaults.food_and_drink"),        "#f97316", "utensils" ],
-          [ I18n.t("models.category.defaults.groceries"),             "#407706", "shopping-bag" ],
-          [ I18n.t("models.category.defaults.shopping"),              "#3b82f6", "shopping-cart" ],
-          [ I18n.t("models.category.defaults.transportation"),        "#0ea5e9", "bus" ],
-          [ I18n.t("models.category.defaults.travel"),                "#2563eb", "plane" ],
-          [ I18n.t("models.category.defaults.entertainment"),         "#a855f7", "drama" ],
-          [ I18n.t("models.category.defaults.healthcare"),            "#4da568", "pill" ],
-          [ I18n.t("models.category.defaults.personal_care"),         "#14b8a6", "scissors" ],
-          [ I18n.t("models.category.defaults.home_improvement"),      "#d97706", "hammer" ],
-          [ I18n.t("models.category.defaults.mortgage_rent"),         "#b45309", "home" ],
-          [ I18n.t("models.category.defaults.utilities"),             "#eab308", "lightbulb" ],
-          [ I18n.t("models.category.defaults.subscriptions"),         "#6366f1", "wifi" ],
-          [ I18n.t("models.category.defaults.insurance"),             "#0284c7", "shield" ],
-          [ I18n.t("models.category.defaults.sports_and_fitness"),    "#10b981", "dumbbell" ],
-          [ I18n.t("models.category.defaults.gifts_and_donations"),   "#61c9ea", "hand-helping" ],
-          [ I18n.t("models.category.defaults.taxes"),                 "#dc2626", "landmark" ],
-          [ I18n.t("models.category.defaults.loan_payments"),         "#e11d48", "credit-card" ],
-          [ I18n.t("models.category.defaults.services"),              "#7c3aed", "briefcase" ],
-          [ I18n.t("models.category.defaults.fees"),                  "#6b7280", "receipt" ],
-          [ I18n.t("models.category.defaults.savings_and_investments"), "#059669", "piggy-bank" ],
-          [ investment_contributions_name,                       "#0d9488", "trending-up" ]
+          [ I18n.t("models.category.defaults.income"),                "#22c55e", "circle-dollar-sign", "income" ],
+          [ I18n.t("models.category.defaults.food_and_drink"),        "#f97316", "utensils", "expense" ],
+          [ I18n.t("models.category.defaults.groceries"),             "#407706", "shopping-bag", "expense" ],
+          [ I18n.t("models.category.defaults.shopping"),              "#3b82f6", "shopping-cart", "expense" ],
+          [ I18n.t("models.category.defaults.transportation"),        "#0ea5e9", "bus", "expense" ],
+          [ I18n.t("models.category.defaults.travel"),                "#2563eb", "plane", "expense" ],
+          [ I18n.t("models.category.defaults.entertainment"),         "#a855f7", "drama", "expense" ],
+          [ I18n.t("models.category.defaults.healthcare"),            "#4da568", "pill", "expense" ],
+          [ I18n.t("models.category.defaults.personal_care"),         "#14b8a6", "scissors", "expense" ],
+          [ I18n.t("models.category.defaults.home_improvement"),      "#d97706", "hammer", "expense" ],
+          [ I18n.t("models.category.defaults.mortgage_rent"),         "#b45309", "home", "expense" ],
+          [ I18n.t("models.category.defaults.utilities"),             "#eab308", "lightbulb", "expense" ],
+          [ I18n.t("models.category.defaults.subscriptions"),         "#6366f1", "wifi", "expense" ],
+          [ I18n.t("models.category.defaults.insurance"),             "#0284c7", "shield", "expense" ],
+          [ I18n.t("models.category.defaults.sports_and_fitness"),    "#10b981", "dumbbell", "expense" ],
+          [ I18n.t("models.category.defaults.gifts_and_donations"),   "#61c9ea", "hand-helping", "expense" ],
+          [ I18n.t("models.category.defaults.taxes"),                 "#dc2626", "landmark", "expense" ],
+          [ I18n.t("models.category.defaults.loan_payments"),         "#e11d48", "credit-card", "expense" ],
+          [ I18n.t("models.category.defaults.services"),              "#7c3aed", "briefcase", "expense" ],
+          [ I18n.t("models.category.defaults.fees"),                  "#6b7280", "receipt", "expense" ],
+          [ I18n.t("models.category.defaults.savings_and_investments"), "#059669", "piggy-bank", "expense" ],
+          [ investment_contributions_name,                       "#0d9488", "trending-up", "expense" ]
         ]
       end
   end
 
-  def inherit_color_from_parent
-    self.color = parent.color if subcategory? && parent
+  # New ungrouped categories pick up an obvious classification from their
+  # name — the same inference the classification backfill migration uses.
+  # Grouped categories are handled by inherit_classification_from_group.
+  def infer_classification_from_name
+    return if category_group.present? || classification != "expense"
+
+    self.classification = self.class.suggested_classification(name)
+  end
+
+  # A subcategory lives inside its parent's group (or none) and reports under
+  # the parent's classification — both are denormalized onto it here.
+  def inherit_from_parent
+    return unless subcategory?
+
+    self.color = parent.color
+    self.classification = parent.classification
+    self.category_group = parent.category_group
+  end
+
+  # Monarch semantics: a group's type is authoritative for its members, so an
+  # ungrouped category's classification is its own, but a grouped one always
+  # reports under the group's type.
+  def inherit_classification_from_group
+    self.classification = category_group.classification if category_group
+  end
+
+  def sync_subcategories
+    subcategories.update_all(
+      classification: classification,
+      category_group_id: category_group_id
+    )
   end
 
   def replace_and_destroy!(replacement)

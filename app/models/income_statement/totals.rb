@@ -1,12 +1,13 @@
 class IncomeStatement::Totals
   include IncomeStatement::ScopedTransactionsQuery
 
-  def initialize(family, transactions_scope:, date_range:, include_trades: true, included_account_ids: nil)
+  def initialize(family, transactions_scope:, date_range:, include_trades: true, included_account_ids: nil, account_flag: nil)
     @family = family
     @transactions_scope = transactions_scope
     @date_range = date_range
     @include_trades = include_trades
     @included_account_ids = included_account_ids
+    @account_flag = account_flag
 
     validate_date_range!
   end
@@ -63,19 +64,19 @@ class IncomeStatement::Totals
           c.id as category_id,
           c.parent_id as parent_category_id,
           #{classification_sql("at")} as classification,
-          ABS(SUM(#{converted_amount_sql("at")})) as total,
+          (CASE WHEN #{classification_sql("at")} = 'income' THEN -1 ELSE 1 END) * SUM(#{converted_amount_sql("at")}) as total,
           COUNT(ae.id) as transactions_count,
           false as is_uncategorized_investment
         FROM (#{@transactions_scope.to_sql}) at
         #{entries_join_sql("at")}
         #{accounts_join_sql}
-        LEFT JOIN categories c ON c.id = at.category_id
+        #{categories_join_sql("at")}
         #{exchange_rates_join_sql}
         WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
           AND ae.excluded = false
           AND a.family_id = :family_id
           AND a.status IN ('draft', 'active')
-          AND a.exclude_from_reports = false
+          AND a.#{account_flag_column} = false
           #{exclude_tax_advantaged_sql}
           #{include_finance_accounts_sql}
         GROUP BY c.id, c.parent_id, #{classification_sql("at")};
@@ -88,20 +89,20 @@ class IncomeStatement::Totals
           c.id as category_id,
           c.parent_id as parent_category_id,
           #{classification_sql("at")} as classification,
-          ABS(SUM(#{converted_amount_sql("at")})) as total,
+          (CASE WHEN #{classification_sql("at")} = 'income' THEN -1 ELSE 1 END) * SUM(#{converted_amount_sql("at")}) as total,
           COUNT(ae.id) as entry_count,
           false as is_uncategorized_investment
         FROM (#{@transactions_scope.to_sql}) at
         #{entries_join_sql("at")}
         #{accounts_join_sql}
-        LEFT JOIN categories c ON c.id = at.category_id
+        #{categories_join_sql("at")}
         #{exchange_rates_join_sql}
         WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
           #{investment_activity_label_sql("at")}
           AND ae.excluded = false
           AND a.family_id = :family_id
           AND a.status IN ('draft', 'active')
-          AND a.exclude_from_reports = false
+          AND a.#{account_flag_column} = false
           #{exclude_tax_advantaged_sql}
           #{include_finance_accounts_sql}
         GROUP BY c.id, c.parent_id, #{classification_sql("at")}

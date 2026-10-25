@@ -8,11 +8,12 @@
 class IncomeStatement::DailyExpenseTotals
   include IncomeStatement::ScopedTransactionsQuery
 
-  def initialize(family, transactions_scope:, date_range:, included_account_ids: nil)
+  def initialize(family, transactions_scope:, date_range:, included_account_ids: nil, account_flag: nil)
     @family = family
     @transactions_scope = transactions_scope
     @date_range = date_range
     @included_account_ids = included_account_ids
+    @account_flag = account_flag
 
     validate_date_range!
   end
@@ -43,9 +44,10 @@ class IncomeStatement::DailyExpenseTotals
           SELECT
             ae.date as day,
             #{classification_sql("at")} as classification,
-            ABS(SUM(#{converted_amount_sql("at")})) as total
+            SUM(#{converted_amount_sql("at")}) as total
           FROM (#{@transactions_scope.to_sql}) at
           #{entries_join_sql("at")}
+          #{categories_join_sql("at")}
           #{accounts_join_sql}
           #{exchange_rates_join_sql}
           WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
@@ -53,7 +55,7 @@ class IncomeStatement::DailyExpenseTotals
             AND ae.excluded = false
             AND a.family_id = :family_id
             AND a.status IN ('draft', 'active')
-            AND a.exclude_from_reports = false
+            AND a.#{account_flag_column} = false
             #{exclude_tax_advantaged_sql}
             #{include_finance_accounts_sql}
           GROUP BY ae.date, #{classification_sql("at")}

@@ -223,3 +223,57 @@ class CategoryTest < ActiveSupport::TestCase
     assert_equal [ c ], result.to_a
   end
 end
+
+class CategoryClassificationTest < ActiveSupport::TestCase
+  def setup
+    @family = families(:dylan_family)
+  end
+
+  test "typed scopes return only matching classifications" do
+    group = @family.category_groups.create!(name: "Moves", classification: "transfer")
+    transfer = @family.categories.create!(name: "Transfers", color: "#000000", lucide_icon: "arrow-right-left", category_group: group)
+
+    assert_includes @family.categories.incomes, categories(:income)
+    assert_not_includes @family.categories.incomes, categories(:food_and_drink)
+
+    assert_includes @family.categories.expenses, categories(:food_and_drink)
+    assert_not_includes @family.categories.expenses, categories(:income)
+
+    assert_equal [ transfer ], @family.categories.transfers.to_a
+  end
+
+  test "new categories infer an obvious classification from their name" do
+    assert_equal "income", @family.categories.create!(name: "Incomes", color: "#000000", lucide_icon: "shapes").classification
+    assert_equal "income", @family.categories.create!(name: "Other Income", color: "#000000", lucide_icon: "shapes").classification
+    assert_equal "expense", @family.categories.create!(name: "Coffee", color: "#000000", lucide_icon: "coffee").classification
+  end
+
+  test "subcategories inherit classification and group from their parent" do
+    group = @family.category_groups.create!(name: "Income Streams", classification: "income")
+    parent = @family.categories.create!(name: "Consulting", color: "#000000", lucide_icon: "briefcase", category_group: group)
+    child = @family.categories.create!(name: "Side gigs", color: "#111111", lucide_icon: "wrench", parent: parent)
+
+    assert_equal "income", child.classification
+    assert_equal group, child.category_group
+  end
+
+  test "moving a parent between groups syncs its subcategories" do
+    expense_group = @family.category_groups.create!(name: "Everyday", classification: "expense")
+    income_group = @family.category_groups.create!(name: "Income Streams", classification: "income")
+    parent = categories(:food_and_drink)
+    child = categories(:subcategory)
+
+    parent.update!(category_group: expense_group)
+    assert_equal expense_group, child.reload.category_group
+    assert_equal "expense", child.classification
+
+    parent.update!(category_group: income_group)
+    assert_equal income_group, child.reload.category_group
+    assert_equal "income", child.classification
+  end
+
+  test "an invalid classification is rejected" do
+    category = @family.categories.build(name: "Whatever", color: "#000000", lucide_icon: "shapes", classification: "bogus")
+    assert_not category.valid?
+  end
+end
