@@ -7,44 +7,7 @@
 
   <div class="space-y-4">
     <%# Top Section: Donut and Summary side by side %>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <%# Budget Donut %>
-      <div class="min-h-[300px] bg-container rounded-xl shadow-border-xs p-8">
-        <% if !@budget.initialized? && @source_budget.present? && @editable %>
-          <%= render "budgets/copy_previous_prompt", budget: @budget, source_budget: @source_budget %>
-        <% elsif @budget.initialized? && @budget.available_to_allocate.negative? %>
-          <%= render "budgets/over_allocation_warning", budget: @budget, editable: @editable %>
-        <% else %>
-          <%= render "budgets/budget_donut", budget: @budget, editable: @editable %>
-        <% end %>
-      </div>
-
-      <%# Actuals Summary %>
-      <% if @budget.initialized? && @budget.available_to_allocate.positive? %>
-        <%= render DS::Tabs.new(active_tab: params[:tab].presence || "budgeted") do |tabs| %>
-          <% tabs.with_nav do |nav| %>
-            <% nav.with_btn(id: "budgeted", label: t("budgets.show.tabs.budgeted")) %>
-            <% nav.with_btn(id: "actuals", label: t("budgets.show.tabs.actual")) %>
-          <% end %>
-
-          <% tabs.with_panel(tab_id: "budgeted") do %>
-            <div class="bg-container rounded-xl shadow-border-xs">
-              <%= render "budgets/budgeted_summary", budget: @budget %>
-            </div>
-          <% end %>
-
-          <% tabs.with_panel(tab_id: "actuals") do %>
-            <div class="bg-container rounded-xl shadow-border-xs">
-              <%= render "budgets/actuals_summary", budget: @budget %>
-            </div>
-          <% end %>
-        <% end %>
-      <% else %>
-        <div class="bg-container rounded-xl shadow-border-xs">
-          <%= render "budgets/actuals_summary", budget: @budget %>
-        </div>
-      <% end %>
-    </div>
+    <%= render "budgets/summary_grid", budget: @budget, source_budget: @source_budget, editable: @editable %>
 
     <%# Flex is part of the plan (a slice of `budgeted_spending`), so it sits
         directly under the donut/summary, ahead of the cash-on-hand panel that

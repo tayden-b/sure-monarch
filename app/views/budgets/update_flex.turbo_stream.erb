@@ -1,1 +1,2 @@
 <%= turbo_stream.replace dom_id(@budget, :flex_budget), partial: "budgets/flex_budget", locals: { budget: @budget, editable: true } %>
+<%= turbo_stream.replace dom_id(@budget, :summary_grid), partial: "budgets/summary_grid", locals: { budget: @budget, editable: true } %>
