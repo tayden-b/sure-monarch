@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/upgrade — pull the repo, rebuild the image, restart, migrate
+#
+#   ./bin/upgrade                # run on the VPS from deploy/vps/
+#
+# Steps: bin/backup (safety) → git pull --ff-only on the checked-out branch →
+# docker compose build → up -d → bin/rails db:prepare → wait on /up.
+#
+# A backup is taken first — if the upgrade misbehaves, ./bin/restore rolls
+# the database back and `git checkout <old-sha>` + rebuild restores the code.
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$KIT_DIR/../.." && pwd)"
+cd "$KIT_DIR"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,11p' "$0"; exit 0
+fi
+
+# The checkout and the docker group belong to the app user — git refuses to
+# touch it as root ("dubious ownership"). Re-exec the whole script as that
+# user so `sudo ./bin/upgrade` works the same as `ssh sure@host ./bin/upgrade`.
+APP_USER="${SURE_USER:-sure}"
+if [ "$(id -un)" != "$APP_USER" ] && [ "$(id -u)" = "0" ] \
+  && id -u "$APP_USER" >/dev/null 2>&1; then
+  exec runuser -l "$APP_USER" -c "$KIT_DIR/bin/upgrade ${*:-}"
+fi
+
+say()  { printf '%s\n' "$*"; }
+step() { printf '\n==> %s\n' "$*"; }
+die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+step "Safety backup first"
+"$KIT_DIR/bin/backup"
+
+step "git pull --ff-only ($(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD) in $REPO_DIR)"
+git -C "$REPO_DIR" pull --ff-only \
+  || die "pull failed (local changes?). Check: git -C $REPO_DIR status"
+
+step "Rebuilding the app image"
+docker compose build
+
+step "Restarting the stack"
+docker compose up -d
+
+step "Waiting for web /up"
+healthy=0
+for _ in $(seq 1 90); do
+  if docker compose exec -T web curl -fsS http://localhost:3000/up >/dev/null 2>&1; then
+    healthy=1; break
+  fi
+  sleep 2
+done
+[ "$healthy" = "1" ] || die "App did not become healthy after upgrade — check: docker compose logs web"
+say "  /up healthy"
+
+step "Preparing the database"
+docker compose exec -T web bin/rails db:prepare
+
+step "Done"
+say "  Upgraded to $(git -C "$REPO_DIR" rev-parse --short HEAD)"

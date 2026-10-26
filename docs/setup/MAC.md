@@ -1,3 +1,5 @@
+> **Not used — see [docs/setup/VPS.md](VPS.md).** Hosting moved to a small public VPS (Caddy HTTPS); this Mac/Tailscale kit is kept for reference only.
+
 # Sure on a Mac — self-host kit
 
 One-command setup for running this Sure fork on your Mac with Docker Desktop,

@@ -1,0 +1,21 @@
+# Starts the Sure compose stack at boot. Installed by deploy/vps/bin/setup-vps
+# into /etc/systemd/system/ with @KIT_DIR@ / @SURE_USER@ substituted.
+[Unit]
+Description=Sure compose stack (deploy/vps)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=@SURE_USER@
+Group=docker
+Environment=HOME=/home/@SURE_USER@
+WorkingDirectory=@KIT_DIR@
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+# ===========================================================================
+# Caddyfile — automatic HTTPS in front of Sure
+# ===========================================================================
+# {$APP_DOMAIN} comes from deploy/vps/.env (e.g. money.example.com).
+#
+# TLS is fully automatic with no `tls` directive:
+#   public domain (real DNS A record → this VPS)  →  Let's Encrypt cert
+#   localhost / bare IP                           →  Caddy's internal CA
+# Rehearsing on a fake NON-localhost name (e.g. sure.test in /etc/hosts with
+# no public DNS): set CADDYFILE=./Caddyfile.internal in .env — that variant
+# adds `tls internal` so Caddy self-signs instead of trying Let's Encrypt.
+# Want a Let's Encrypt contact email on the account? Add `tls you@you.com`
+# inside this block.
+#
+# Rate limiting is intentionally NOT done at Caddy: Rails' Rack::Attack
+# (config/initializers/rack_attack.rb) already throttles every credential-
+# guessing surface (sign-in, MFA verify, password reset, API login) by both
+# IP and credential, which a dumb IP rate limit at the edge cannot do.
+# ===========================================================================
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Security headers. CSP stays in Rails
+	# (config/initializers/content_security_policy.rb) so it keeps working.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Health endpoint for compose healthchecks / uptime probes — answered
+	# by Caddy itself, so it also proves the proxy is alive when Rails is
+	# restarting.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

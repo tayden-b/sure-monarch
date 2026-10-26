@@ -1,0 +1,11 @@
+# Nightly Sure backup at 03:15. Installed by deploy/vps/bin/setup-vps;
+# verify with `systemctl list-timers sure-backup.timer`.
+[Unit]
+Description=Nightly Sure Postgres backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

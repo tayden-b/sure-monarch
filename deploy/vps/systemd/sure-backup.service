@@ -1,0 +1,13 @@
+# Runs deploy/vps/bin/backup once. Triggered by sure-backup.timer.
+[Unit]
+Description=Sure Postgres backup (pg_dump → backups/)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=@SURE_USER@
+Group=docker
+Environment=HOME=/home/@SURE_USER@
+WorkingDirectory=@KIT_DIR@
+ExecStart=@KIT_DIR@/bin/backup
