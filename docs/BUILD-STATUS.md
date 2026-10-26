@@ -84,6 +84,10 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   quirks documented in RUNBOOK §7.
 - [#19](https://github.com/tayden-b/sure-monarch/pull/19) merged (`931b541a`):
   flex edit now turbo-refreshes the plan headroom/donut region (T7 leftover).
+- [#23](https://github.com/tayden-b/sure-monarch/pull/23) merged (`534ec7c5`):
+  imported holdings dated at the archive's as-of/validated_at (not import day)
+  so net-worth history isn't backdated flat; deactivated Monarch accounts
+  import as closed.
 - VPS kit OVH fixes **merged** in [#22](https://github.com/tayden-b/sure-monarch/pull/22)
   (`75e9eca6`): sshd drop-in renamed 00-* (beats cloud-init's 50-*, verified via
   `sshd -T`) + lockout guard + root key-mirror extended to sudo user, archive
