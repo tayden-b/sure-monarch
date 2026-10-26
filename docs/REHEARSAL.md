@@ -361,3 +361,56 @@ exist to exercise.
 - Plaid: needs his dashboard keys (same as Part 1).
 - Coinbase/Kraken are **provider items** (Settings → Providers), not env keys —
   HANDOFF step 7 routes them correctly.
+
+# Part 3 — OVH-gap fixes rehearsal (`work/vps-kit-ovh-fixes`)
+
+Re-run of the VPS path after the real OVH box exposed three gaps (sshd drop-in
+ordering, `sure` key mirroring, `/archive` perms). Same Ubuntu 24.04 container
+as Part 2, seeded to OVH conditions: `50-cloud-init.conf` +
+`60-cloudimg-settings.conf` in `sshd_config.d/` with `PasswordAuthentication
+yes`, **root's authorized_keys empty** — the only key lives on the non-root
+sudo user `ubuntu`. Run as `sudo` from `ubuntu`, exactly like the real box.
+
+## What ran
+
+- `sudo -E env SURE_REPO_URL=/tmp/sure-mirror
+  SURE_REPO_BRANCH=work/vps-kit-ovh-fixes APP_DOMAIN=localhost
+  CADDYFILE=Caddyfile.internal deploy/vps/bin/setup-vps` — clean pass to
+  `==> Done` (plus an idempotent re-run earlier in the session).
+- sshd: `00-sure-hardening.conf` written, old `60-sure-hardening.conf` absent,
+  reload verified — `sshd -T` ⇒ `passwordauthentication no`,
+  `kbdinteractiveauthentication no`, `permitrootlogin without-password`
+  (sshd's render of `prohibit-password`) despite `50-cloud-init.conf` still
+  present with `yes`. First-match ordering confirmed.
+- Keys: `ssh keys mirrored to sure (1 key(s))` — count printed; mirrored from
+  `ubuntu`'s authorized_keys (root's empty); `~sure/.ssh/authorized_keys`
+  = 1 key, `sure:sure 600`.
+- Archive/backups: `data/archive` → `uid 1000 : sure`, mode `750`; `backups/`
+  → `sure:sure 750`. From inside the `web` container (`id -u` = 1000):
+  `ls -la /archive/` lists `.gitkeep` — uid-1000 read confirmed. Group =
+  `sure` keeps the `docker compose up -d` build-context sender able to
+  traverse (its fsutil walk is not `.dockerignore`-aware — see below).
+- Stack: `compose up -d` rebuild (pull_policy: build) → 41.98MB context sent
+  with no permission errors; all 5 containers `(healthy)`; `/up` → 200;
+  `db:prepare` clean.
+
+## What broke → fixed (this run)
+
+| Bug | Fix (commit) |
+|---|---|
+| `50-cloud-init.conf` (PasswordAuthentication yes) outranks `60-sure-hardening.conf` — sshd keeps FIRST value, `sshd -T` stayed `yes` | `00-sure-hardening.conf` + `sshd -T` post-reload verify → `die` if not `no`; `KbdInteractiveAuthentication no` added (`47f308b9`) |
+| Password-auth lockout risk if operator has no SSH key yet | pre-touch guard: `die` unless root's or `$SUDO_USER`'s authorized_keys is non-empty (`47f308b9`) |
+| `sure` mirrored root's (empty) authorized_keys → 0 keys, pull-backup path dead | mirror root's + `$SUDO_USER`'s, dedupe, print count, loud `warn` at 0 (`47f308b9`) |
+| Importer `Permission denied` on `/archive` — dir owned `sure`, container uid is 1000 | `data/archive` created `uid 1000` (detected from built image), mode 750 + new `bin/fix-archive-perms` helper (`47f308b9`) |
+| `compose up -d` rebuild died: `error from sender: open data/archive: permission denied` — fsutil context walk runs as `sure` and does not honor `.dockerignore` | group on archive = `sure` (r-x) so the sender traverses; uid stays 1000 for the importer; `.dockerignore` still excludes the dirs for BuildKit/legacy paths + keeps `deploy/vps/.env` out of the image (`e6338524`) |
+| `backups/` spec said "chown to container uid" — wrong: `bin/backup` + systemd write host-side as `sure` | kept `sure:sure 750`; documented why (`47f308b9`) |
+
+## Residual / known notes
+
+- `permitrootlogin without-password` in `sshd -T` output is sshd's canonical
+  rendering of `prohibit-password` — same setting, expected.
+- `data/archive` shows owner `ubuntu` inside the rehearsal container because
+  the container's `ubuntu` user happens to be uid 1000; on the real OVH box
+  it will show the raw uid — harmless.
+- Container has no systemd; unit install path unchanged (warns + prints the
+  manual sed, same as Part 2). Real-box boot behavior verified there.

@@ -143,6 +143,7 @@ class BudgetsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal 250, budget.reload.flex_spending
     assert_includes @response.body, dom_id(budget, :flex_budget)
+    assert_includes @response.body, dom_id(budget, :summary_grid)
   end
 
   test "update accepts flex_spending from the setup wizard" do

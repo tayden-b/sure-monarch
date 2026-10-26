@@ -43,3 +43,12 @@
 # Ignore Docker-related files
 /.dockerignore
 /Dockerfile*
+
+# Ignore VPS-kit host state — it is bind-mounted into containers at runtime,
+# never baked into the image. data/archive + backups can hold GBs of Monarch
+# exports and pg_dumps, and data/archive is owned by the container uid with
+# mode 750 (unreadable by the build-context sender). deploy/vps/.env holds
+# generated secrets and must not ship in the image.
+/deploy/vps/data
+/deploy/vps/backups
+/deploy/vps/.env

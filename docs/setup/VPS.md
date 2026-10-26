@@ -11,8 +11,12 @@ for the kit itself.
 
 ## Prerequisites
 
-1. **A VPS** — Ubuntu 26.04 LTS, x86_64, root SSH **key** access (the setup
-   disables password SSH). e.g. OVHcloud VPS-1 (2 vCPU / 4 GB / 40 GB NVMe).
+1. **A VPS** — Ubuntu 26.04 LTS, x86_64, and SSH **key** access to a
+   sudo-capable login user (the setup disables password SSH for everyone and
+   refuses to run the sshd hardening step when no key exists). e.g. OVHcloud
+   VPS-1 (2 vCPU / 4 GB / 40 GB NVMe) — note OVH US has no SSH-key field at
+   checkout; you get an `ubuntu` user + emailed temp password, then
+   `ssh-copy-id` your key over (see `docs/HANDOFF.md` step 3).
 2. **A hostname** — a DNS **A record** pointing at the VPS's public IPv4,
    e.g. `money.tayden.dev`. Let's Encrypt needs it to issue a real cert.
    - No domain? `<vps-ip>.sslip.io` (e.g. `51.210.42.17.sslip.io`) resolves
@@ -24,7 +28,7 @@ for the kit itself.
 
 ## First-time setup (≈20–30 min)
 
-SSH in as root, then:
+SSH in as the login user (`ubuntu` on OVH), then:
 
 ```bash
 git clone --branch monarch-baseline https://github.com/tayden-b/sure-monarch.git /tmp/sure
@@ -40,9 +44,15 @@ The script is **idempotent** — re-run it any time. It will:
   (nightly security patches),
 - install Docker Engine + compose plugin from the official Docker apt repo,
 - create a non-root `sure` user (docker group) — the stack runs as them,
+- mirror the operator's SSH keys (root's AND the sudo user's
+  `authorized_keys`) into `~sure` so `ssh sure@<ip>` works, and warn loudly
+  if it finds none,
 - `ufw`: allow 22/80/443, enable; `fail2ban` sshd jail; sshd
-  `PasswordAuthentication no` (key-only SSH — make sure your key works
-  before logging out),
+  `PasswordAuthentication no` + `PermitRootLogin prohibit-password` via
+  `sshd_config.d/00-sure-hardening.conf` (the 00- prefix sorts ahead of
+  cloud-init's `50-cloud-init.conf` — sshd keeps the FIRST value seen), then
+  verifies with `sshd -T` and dies rather than leaving password auth on.
+  Make sure your key works before logging out,
 - clone the repo (`monarch-baseline`) into `/opt/sure` as `sure`,
 - write `.env` — auto-generates `SECRET_KEY_BASE`, `POSTGRES_PASSWORD`, and
   the three Active Record encryption keys; derives `WEBAUTHN_RP_ID`,
@@ -136,7 +146,8 @@ rate limiter).
 | Login loops or 403s on POST | You changed `APP_DOMAIN` — also update `WEBAUTHN_ALLOWED_ORIGINS`, `PLAID_REDIRECT_URI`, `PLAID_WEBHOOK_URL` and restart. |
 | Plaid "link account" missing | `PLAID_CLIENT_ID`/`PLAID_SECRET`/`PLAID_ENV` must be set. Sandbox keys only work with `PLAID_ENV=sandbox`. |
 | Webhooks not arriving | `PLAID_WEBHOOK_URL` must be `https://<APP_DOMAIN>/webhooks/plaid` and reachable — `curl -i https://<APP_DOMAIN>/webhooks/plaid` from off-box should return something other than a timeout. |
-| Can't SSH after setup | Password auth is off by design — use the SSH key you provisioned. If locked out entirely, use the provider's KVM/rescue console to revert `/etc/ssh/sshd_config.d/60-sure-hardening.conf`. |
+| Can't SSH after setup | Password auth is off by design — use the SSH key you provisioned (`ssh ubuntu@<ip>` or `ssh sure@<ip>`; root login is `prohibit-password` and OVH ships no root keys). If locked out entirely, use the provider's KVM/rescue console to revert `/etc/ssh/sshd_config.d/00-sure-hardening.conf`. |
+| Importer can't read `/archive` | `./data/archive` must be owned by the app uid (1000). Run `sudo deploy/vps/bin/fix-archive-perms` after copying the export in. |
 | Backup timer not running | `systemctl list-timers` → force a run: `sudo systemctl start sure-backup.service`; logs: `journalctl -u sure-backup.service`. |
 | Need to roll back an upgrade | `./bin/restore` for the DB; `git -C /opt/sure checkout <old-sha>` + `./bin/upgrade` for the code. |
 
