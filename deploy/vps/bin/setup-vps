@@ -124,20 +124,39 @@ else
   say "  created ${SURE_USER} (docker group)"
 fi
 usermod -aG docker "$SURE_USER"
-# Mirror root's authorized_keys so `ssh ${SURE_USER}@host` (and bin/pull-backup)
-# work with the same laptop key. Idempotent — only adds missing keys.
-if [ -f /root/.ssh/authorized_keys ]; then
-  user_home="$(getent passwd "$SURE_USER" | cut -d: -f6)"
-  mkdir -p "$user_home/.ssh"
-  touch "$user_home/.ssh/authorized_keys"
+# Mirror the operator's SSH keys so `ssh ${SURE_USER}@host` (and bin/pull-backup)
+# work. Sources: root's authorized_keys AND the invoking sudo user's — on OVH
+# the only key lives under the login user (e.g. ubuntu); root's file is empty
+# there. Idempotent — only adds keys ${SURE_USER} doesn't already have.
+user_home="$(getent passwd "$SURE_USER" | cut -d: -f6)"
+mkdir -p "$user_home/.ssh"
+touch "$user_home/.ssh/authorized_keys"
+key_files=(/root/.ssh/authorized_keys)
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  sudo_home="$(getent passwd "$SUDO_USER" | cut -d: -f6 || true)"
+  [ -n "$sudo_home" ] && key_files+=("$sudo_home/.ssh/authorized_keys")
+fi
+for key_file in "${key_files[@]}"; do
+  [ -f "$key_file" ] || continue
   while IFS= read -r key; do
+    # skip blank lines and comments
+    [ -z "${key//[[:space:]]/}" ] && continue
+    [ "${key#\#}" != "$key" ] && continue
     grep -qF "$key" "$user_home/.ssh/authorized_keys" 2>/dev/null \
       || echo "$key" >> "$user_home/.ssh/authorized_keys"
-  done < /root/.ssh/authorized_keys
-  chmod 700 "$user_home/.ssh"
-  chmod 600 "$user_home/.ssh/authorized_keys"
-  chown -R "$SURE_USER:$SURE_USER" "$user_home/.ssh"
-  say "  ssh keys mirrored to ${SURE_USER} ($(grep -c '' "$user_home/.ssh/authorized_keys") key(s))"
+  done < "$key_file"
+done
+chmod 700 "$user_home/.ssh"
+chmod 600 "$user_home/.ssh/authorized_keys"
+chown -R "$SURE_USER:$SURE_USER" "$user_home/.ssh"
+key_count="$(grep -c '[^[:space:]]' "$user_home/.ssh/authorized_keys" || true)"
+if [ "$key_count" -gt 0 ]; then
+  say "  ssh keys mirrored to ${SURE_USER} (${key_count} key(s))"
+else
+  warn "no SSH keys found for root or ${SUDO_USER:-root} — ${SURE_USER} got NONE:"
+  warn "  'ssh ${SURE_USER}@<ip>' and bin/pull-backup will NOT work until you add"
+  warn "  your pubkey to ${user_home}/.ssh/authorized_keys (or install it for"
+  warn "  the login user and re-run this script)."
 fi
 
 # ---------------------------------------------------------------------------
@@ -162,18 +181,37 @@ EOF
 systemctl enable --now fail2ban >/dev/null 2>&1 || warn "fail2ban would not start — check: systemctl status fail2ban"
 say "  fail2ban sshd jail installed"
 
-step "Hardening sshd (PasswordAuthentication no)"
+step "Hardening sshd (key-only login)"
 if [ -d /etc/ssh/sshd_config.d ] && command -v sshd >/dev/null 2>&1; then
-  cat > /etc/ssh/sshd_config.d/60-sure-hardening.conf <<'EOF'
-# Installed by deploy/vps/bin/setup-vps — key-only SSH.
+  # Lockout guard: never disable password auth unless SOMEBODY can still log
+  # in with a key — root, or the sudo-invoking login user (OVH ships the key
+  # under e.g. ubuntu and leaves root's authorized_keys empty).
+  any_key=0
+  for key_file in "${key_files[@]}"; do
+    [ -s "$key_file" ] && any_key=1
+  done
+  [ "$any_key" = "1" ] || die "refusing to disable SSH password auth: no authorized_keys found for root or ${SUDO_USER:-root} — install a key first (ssh-copy-id) or you would lock yourself out"
+  # Drop-ins load in glob order and sshd keeps the FIRST value seen, so the
+  # file MUST sort ahead of cloud-init's 50-cloud-init.conf (which sets
+  # 'PasswordAuthentication yes'). 60-sure-hardening.conf silently lost to it.
+  rm -f /etc/ssh/sshd_config.d/60-sure-hardening.conf
+  cat > /etc/ssh/sshd_config.d/00-sure-hardening.conf <<'EOF'
+# Installed by deploy/vps/bin/setup-vps — key-only SSH. Named 00-* so it
+# sorts before cloud-init's 50-cloud-init.conf: sshd keeps the first value.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
 EOF
   if sshd -t 2>/dev/null; then
     systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-    say "  PasswordAuthentication no (sshd_config.d/60-sure-hardening.conf)"
+    # Prove the effective config — never trust that the drop-in won.
+    if sshd -T 2>/dev/null | grep -qi '^passwordauthentication no'; then
+      say "  PasswordAuthentication no (verified via sshd -T)"
+    else
+      die "sshd -T still reports PasswordAuthentication != no — an earlier drop-in in /etc/ssh/sshd_config.d/ is winning; inspect and re-run"
+    fi
   else
-    warn "sshd config test failed — left /etc/ssh/sshd_config.d/60-sure-hardening.conf unapplied"
+    warn "sshd config test failed — left /etc/ssh/sshd_config.d/00-sure-hardening.conf unapplied"
   fi
 else
   warn "no sshd found — skipping sshd hardening"
@@ -325,6 +363,27 @@ compose() { runuser -l "$SURE_USER" -c "cd '$KIT_DIR' && docker compose $*"; }
 
 step "Building the app image (first run can take 10–20 min)"
 compose build
+
+step "Preparing data/archive + backups"
+# web/worker run as uid 1000 (Dockerfile `USER 1000:1000`, user `rails`) and
+# bind-mount ./data/archive at /archive. Owned by $SURE_USER, the importer
+# gets "Permission denied" on /archive/import — hand it to the app uid
+# (detected from the built image; 1000 fallback matches the Dockerfile).
+# Group stays $SURE_USER so the docker build-context sender (which runs as
+# the invoking user via `pull_policy: build`, and does not honor
+# .dockerignore) can still traverse it — 750 alone locks it out.
+# After copying the export in later, re-run bin/fix-archive-perms.
+APP_UID=1000
+img_user="$(docker image inspect sure-monarch:local --format '{{.Config.User}}' 2>/dev/null || true)"
+[ -n "$img_user" ] && APP_UID="${img_user%%:*}"
+mkdir -p "$KIT_DIR/data/archive" "$KIT_DIR/backups"
+chown -R "$APP_UID:$SURE_USER" "$KIT_DIR/data/archive"
+# bin/backup writes dumps host-side as $SURE_USER (the systemd unit runs as
+# $SURE_USER too), so backups/ must stay $SURE_USER-owned — the db container
+# mounts it only for manual in-container dumps.
+chown -R "$SURE_USER:$SURE_USER" "$KIT_DIR/backups"
+chmod 750 "$KIT_DIR/data/archive" "$KIT_DIR/backups"
+say "  data/archive → uid ${APP_UID}:${SURE_USER}, backups → ${SURE_USER} (mode 750)"
 
 step "Starting the stack"
 compose up -d

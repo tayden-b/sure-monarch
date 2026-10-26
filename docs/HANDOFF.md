@@ -23,7 +23,9 @@ Legend: ⌨️ = run in a terminal on YOUR laptop · 🖥️ = run on the VPS ov
 - 🖱️ OVHcloud → **Public Cloud → VPS → order a VPS-1** (2 vCPU / 4 GB / 40 GB NVMe):
   https://www.ovhcloud.com/en/vps/
   - Image: **Ubuntu 26.04 LTS** (64-bit, x86_64)
-  - SSH key: paste your `~/.ssh/id_ed25519.pub` during checkout
+  - SSH key: **OVH (US) does not offer an SSH-key field at checkout** — it
+    emails a temporary password for the `ubuntu` user instead (which arrives
+    already expired). First login flow is in step 3.
   - No extras needed (no backup option — the kit backs up itself)
 - When it's live, note the **public IPv4** (OVH email + dashboard).
 
@@ -38,15 +40,24 @@ Legend: ⌨️ = run in a terminal on YOUR laptop · 🖥️ = run on the VPS ov
 - ⌨️ Verify from your laptop: `dig +short money.tayden.dev` → must return the VPS IP.
   Proceed only when it does (a minute or two, usually).
 
-## 3. Install the app (~20 min, mostly a build)
+## 3. First login + install the app (~20 min, mostly a build)
 
 ```bash
-# ⌨️ from your laptop
-ssh root@<vps-public-ipv4>
+# ⌨️ from your laptop — log in as `ubuntu` (NOT root; root has no keys on OVH).
+# The emailed temporary password is expired: ssh prompts for it once, then
+# forces you to pick a new password on the spot.
+ssh ubuntu@<vps-public-ipv4>
 ```
 
 ```bash
-# 🖥️ on the VPS
+# ⌨️ back on your laptop — install your key for the ubuntu user so future
+# logins (and the setup script's key mirroring) are passwordless:
+ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@<vps-public-ipv4>
+```
+
+```bash
+# 🖥️ on the VPS (as `ubuntu` — it has sudo)
+sudo apt-get update && sudo apt-get install -y git
 git clone https://github.com/tayden-b/sure-monarch.git /tmp/sure-setup
 cd /tmp/sure-setup
 git checkout monarch-baseline
@@ -71,10 +82,10 @@ sudo deploy/vps/bin/setup-vps
 - 📝 Lock signup so nobody else can register:
 
 ```bash
-# 🖥️ on the VPS (as root or `ssh sure@<ip>`)
+# 🖥️ on the VPS (as ubuntu + sudo, or `ssh sure@<ip>` without it)
 cd /opt/sure/deploy/vps
-sed -i 's/^ONBOARDING_STATE=.*/ONBOARDING_STATE=closed/' .env
-docker compose up -d
+sudo sed -i 's/^ONBOARDING_STATE=.*/ONBOARDING_STATE=closed/' .env
+sudo docker compose up -d
 ```
 
 - 🖱️ Turn on 2FA: app → **Settings → Security → Multi-factor authentication** —
@@ -82,21 +93,32 @@ docker compose up -d
 
 ## 5. Import your Monarch history (~10–20 min)
 
+`deploy/vps/data/archive/` is bind-mounted read-only at `/archive` in the app,
+and it is owned by the app's container uid (1000, `rails`) — not by `ubuntu`
+or `sure`. So stage the export in your home dir, then root-copy it in and
+hand it to the app uid:
+
 ```bash
-# ⌨️ from your laptop — copy the export up (ends up mounted at /archive in the app)
-scp -r /path/to/monarch-export/ sure@<vps-public-ipv4>:/opt/sure/deploy/vps/data/archive/
-# the files must land as deploy/vps/data/archive/import/*.json
+# ⌨️ from your laptop — stage the export in your home dir on the VPS
+scp -r /path/to/monarch-export/ ubuntu@<vps-public-ipv4>:~/
 ```
 
 ```bash
-# 🖥️ on the VPS
+# 🖥️ on the VPS — copy it in and fix ownership for the container uid
+sudo cp -r ~/monarch-export/. /opt/sure/deploy/vps/data/archive/
+# the files must land as /opt/sure/deploy/vps/data/archive/import/*.json
+sudo /opt/sure/deploy/vps/bin/fix-archive-perms   # chown -R <app uid> + modes
+```
+
+```bash
+# 🖥️ on the VPS (docker needs root or the `sure` user — `ssh sure@<ip>` works too)
 cd /opt/sure/deploy/vps
 # dry run first — writes nothing, prints the reconciliation report
-docker compose exec -T web bin/rails "monarch:import[/archive,dry_run]"
+sudo docker compose exec -T web bin/rails "monarch:import[/archive,dry_run]"
 # real run
-docker compose exec -T web bin/rails "monarch:import[/archive]"
+sudo docker compose exec -T web bin/rails "monarch:import[/archive]"
 # cross-source duplicate scan — prints counts + a review URL if it finds pairs
-docker compose exec -T web bin/rails monarch:dedup
+sudo docker compose exec -T web bin/rails monarch:dedup
 ```
 
 Verify in the printed report: every collection's `created`+`updated`+`skipped`
@@ -114,9 +136,9 @@ record — see `docs/monarch-import/RUNBOOK.md` §rollback.
 # 🖥️ on the VPS — set your production keys (edit .env, or this one-liner appends/replaces)
 cd /opt/sure/deploy/vps
 for kv in "PLAID_CLIENT_ID=<your id>" "PLAID_SECRET=<your production secret>" "PLAID_ENV=production"; do
-  key="${kv%%=*}"; grep -q "^${key}=" .env && sed -i "s|^${key}=.*|${kv}|" .env || echo "$kv" >> .env
+  key="${kv%%=*}"; grep -q "^${key}=" .env && sudo sed -i "s|^${key}=.*|${kv}|" .env || echo "$kv" | sudo tee -a .env
 done
-docker compose up -d
+sudo docker compose up -d
 # optional sanity pass first: PLAID_ENV=sandbox + sandbox keys, then
 #   docker compose exec -T web bin/rails plaid:sandbox_smoke
 ```
@@ -148,9 +170,9 @@ meeting live feed is where duplicates appear; provider rows win merges — corre
 ## 8. Safety net (~5 min)
 
 ```bash
-# 🖥️ on the VPS
+# 🖥️ on the VPS (bin/backup needs docker — run it with sudo or `ssh sure@<ip>`)
 cd /opt/sure/deploy/vps
-./bin/backup            # first snapshot now — backups/*.dump, keeps last 14
+sudo ./bin/backup       # first snapshot now — backups/*.dump, keeps last 14
 systemctl list-timers sure-backup.timer   # confirm nightly 03:15 timer is armed
 ```
 
@@ -174,7 +196,7 @@ cd /path/to/sure-monarch/deploy/vps
 |---|---|
 | `setup-vps` dies early | It's idempotent — fix the cause, re-run it. apt lock errors mean `unattended-upgrades` is still running; wait a minute. |
 | Cert not issued / self-signed warning | DNS A record must resolve to the VPS + ports 80/443 open. `docker compose logs caddy` shows ACME errors. sslip.io is often LE-rate-limited — use a real domain. |
-| `ssh sure@<ip>` denied | Your laptop key must be in root's authorized_keys at order time (setup mirrors it to `sure`). `ssh root@<ip>` always works; pull-backup accepts `root@<ip>` too. |
+| `ssh sure@<ip>` denied | `sure` gets keys mirrored from BOTH root's and the login user's (`ubuntu`) `authorized_keys` — re-run `sudo deploy/vps/bin/setup-vps` after `ssh-copy-id`, or append your pubkey to `~sure/.ssh/authorized_keys` by hand. `ssh root@<ip>` does NOT work (PermitRootLogin is `prohibit-password` and OVH ships no root keys). |
 | `/up` never healthy | `docker compose logs web` — usually a missing `.env` value; compare against `.env.example`. |
 | `plaid:sandbox_smoke` skips | It needs `PLAID_CLIENT_ID`/`PLAID_SECRET`/`PLAID_ENV=sandbox` set + `docker compose up -d`. Exit 0 without them is expected. |
 | Plaid OAuth loop/error | Redirect URI must be exactly `https://money.tayden.dev/accounts` in the dashboard AND match `APP_DOMAIN`/`PLAID_REDIRECT_URI` in `.env`. |
