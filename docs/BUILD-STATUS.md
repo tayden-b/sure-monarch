@@ -84,9 +84,11 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   quirks documented in RUNBOOK §7.
 - [#19](https://github.com/tayden-b/sure-monarch/pull/19) merged (`931b541a`):
   flex edit now turbo-refreshes the plan headroom/donut region (T7 leftover).
-- VPS kit OVH fixes (sshd drop-in vs cloud-init ordering, `sure` key mirror,
-  archive perms for uid 1000) — in flight on `work/vps-kit-ovh-fixes`
-  (session e8c91f85), PR pending.
+- VPS kit OVH fixes **merged** in [#22](https://github.com/tayden-b/sure-monarch/pull/22)
+  (`75e9eca6`): sshd drop-in renamed 00-* (beats cloud-init's 50-*, verified via
+  `sshd -T`) + lockout guard + root key-mirror extended to sudo user, archive
+  perms → container uid 1000 (`bin/fix-archive-perms`), `.dockerignore` keeps
+  data/backups/.env out of the build context.
 
 ## What Tayden must do by hand (running list)
 
@@ -103,6 +105,5 @@ A consolidated ordered checklist lands in docs/HANDOFF.md at the end of the buil
 
 Build complete and **live**: https://money.tayden.dev is up, account created,
 onboarding closed, Plaid sandbox keys set, real-archive import run (4
-importer defects found + fixed, #21). Remaining: `work/vps-kit-ovh-fixes`
-PR when its worker pushes, then production Plaid keys + institution links
-per docs/HANDOFF.md §6–7.
+importer defects found + fixed, #21). Remaining: production Plaid keys + institution links per docs/HANDOFF.md §6–7,
+then re-run `monarch:import` on the real archive with the #21 fixes.
