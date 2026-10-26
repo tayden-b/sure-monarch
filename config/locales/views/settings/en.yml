@@ -336,6 +336,12 @@ en:
         step_2: Click "Add connector" and paste the MCP server URL above.
         step_3: Click Connect — you'll be redirected to Sure to sign in and authorize access.
         step_4: Once authorized, Claude can read your accounts, transactions, and balance data.
+        env_tokens_title: Static access tokens
+        env_tokens_subtitle: Bearer tokens configured on this server via environment variables, shown masked. The full values live only in your deployment's .env file.
+        scope_read: read
+        scope_read_write: read_write
+        env_tokens_explainer: "A read token can list and call only read tools — write tools (create, update, delete, import) are hidden and answer \"Unknown tool\". A read_write token exposes the full tool registry. Hand read tokens to unattended agents."
+        env_tokens_user: "These tokens act as %{email}."
         connected_title: Connected clients
         connected_subtitle: These apps currently have access to your Sure data. Revoke any you no longer use.
         unknown_client: Unknown client

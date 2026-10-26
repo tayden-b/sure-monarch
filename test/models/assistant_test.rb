@@ -19,6 +19,46 @@ class AssistantTest < ActiveSupport::TestCase
     assert_includes preview_classes, Assistant::Function::GetValuations
   end
 
+  test "read-only function set stays inside the registry and disjoint from writes" do
+    preview_user = users(:family_admin)
+    preview_user.update!(preferences: (preview_user.preferences || {}).merge("preview_features_enabled" => true))
+    all_classes = Assistant.function_classes(preview_user)
+
+    assert_empty Assistant::READ_ONLY_FUNCTIONS - all_classes,
+      "every READ_ONLY_FUNCTIONS entry must be registered in function_classes"
+
+    # Denylist of known write tools. Adding a mutating tool to
+    # READ_ONLY_FUNCTIONS fails here, so a write can never silently become
+    # callable by a read-scoped MCP token.
+    write_functions = [
+      Assistant::Function::ImportBankStatement,
+      Assistant::Function::CreateGoal,
+      Assistant::Function::CreateTag,
+      Assistant::Function::UpdateTag,
+      Assistant::Function::CreateCategory,
+      Assistant::Function::UpdateCategory,
+      Assistant::Function::CreateTransaction,
+      Assistant::Function::UpdateTransaction,
+      Assistant::Function::DeleteTransaction,
+      Assistant::Function::UpdateBudget,
+      Assistant::Function::UploadAccountStatement,
+      Assistant::Function::RecordValuation,
+      Assistant::Function::CreateBill,
+      Assistant::Function::UpdateBill,
+      Assistant::Function::RecordBillPayment
+    ]
+
+    assert_empty Assistant::READ_ONLY_FUNCTIONS & write_functions,
+      "a write tool leaked into READ_ONLY_FUNCTIONS"
+    assert_empty write_functions - all_classes,
+      "the write denylist drifted from function_classes — update it"
+
+    # The two sets partition the registry: a new tool must be consciously
+    # placed in one of them, never left unaccounted for.
+    assert_equal all_classes.sort_by(&:name),
+      (Assistant::READ_ONLY_FUNCTIONS + write_functions).sort_by(&:name)
+  end
+
   setup do
     @chat = chats(:two)
     @message = @chat.messages.create!(

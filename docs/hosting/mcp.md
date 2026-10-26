@@ -33,19 +33,28 @@ Set these environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MCP_API_TOKEN` | Bearer token for authentication | `your-secret-token-here` |
+| `MCP_API_TOKEN` | Bearer token with read + write access to the full tool registry | `your-secret-token-here` |
+| `MCP_API_TOKEN_READONLY` | Bearer token with read-only access — `get_*`/`list_*`/`search_*` tools only | `another-secret-token` |
 | `MCP_USER_EMAIL` | Email of the Sure user whose data the assistant can access | `user@example.com` |
 
-Both variables are required for the legacy token flow. OAuth clients using the
-MCP discovery and dynamic registration endpoints do not need these variables.
+`MCP_USER_EMAIL` plus at least one token are required for the static-token
+flow. OAuth clients using the MCP discovery and dynamic registration endpoints
+do not need these variables.
+
+A read-only token's `tools/list` shows only read tools, and a `tools/call` on a
+write tool (`create_transaction`, `update_budget`, `import_bank_statement`, …)
+returns the same "Unknown tool" error as an unrecognized name — no signal that
+the tool exists. **Read-only is the recommended default for unattended
+agents**; keep `MCP_API_TOKEN` for interactive clients you trust to make
+changes.
 
 ### Generating a secure token
 
-Generate a random token for `MCP_API_TOKEN`:
+Generate a random token for each variable you set:
 
 ```bash
-# macOS/Linux
-openssl rand -base64 32
+# macOS/Linux — run once per token
+openssl rand -hex 32
 
 # Or use any secure password generator
 ```
@@ -55,7 +64,7 @@ openssl rand -base64 32
 The `MCP_USER_EMAIL` must match an existing Sure user's email address. The AI assistant will have access to all financial data for that user's family.
 
 > [!CAUTION]
-> The AI assistant can call the MCP tools available to the specified user. This includes reading financial data and write-capable tools such as statement import, goal/category/tag changes, transaction updates, and budget updates. Only set this for users you trust with your AI provider.
+> With `MCP_API_TOKEN`, the AI assistant can call every MCP tool available to the specified user. This includes reading financial data and write-capable tools such as statement import, goal/category/tag changes, transaction updates, and budget updates. Only set this for users you trust with your AI provider. Use `MCP_API_TOKEN_READONLY` when the agent only needs to read.
 
 ## Configuration
 
@@ -103,7 +112,8 @@ MCP supports OAuth authorization-code flow for clients such as Claude Code.
 Clients should discover the protected-resource metadata, register dynamically,
 request the advertised `read_write` scope, and send the resulting access token
 as a Bearer token. Dynamically registered clients are assigned this scope so
-their tokens can authenticate to MCP.
+their tokens can authenticate to MCP. A token carrying only the `read` scope
+is also accepted and is served the read-only tool surface.
 
 For self-hosted deployments or clients without OAuth support, requests may use
 the legacy `MCP_API_TOKEN` as a Bearer token:
@@ -256,7 +266,7 @@ The authorization-server metadata includes:
 - `authorization_endpoint`: `https://your-sure-instance/oauth/authorize`
 - `token_endpoint`: `https://your-sure-instance/oauth/token`
 - `registration_endpoint`: `https://your-sure-instance/register`
-- `scopes_supported`: `["read_write"]`
+- `scopes_supported`: `["read", "read_write"]`
 
 ### Call a Tool
 

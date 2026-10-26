@@ -225,6 +225,31 @@ cd /path/to/sure-monarch/deploy/vps
 - 🔁 Upgrades later: `ssh sure@<ip>` → `cd /opt/sure/deploy/vps` →
   `./bin/upgrade` (back up first, git pull, rebuild, restart, migrate).
 
+## Agents / MCP (optional)
+
+External AI agents — a Devin workspace, Claude.ai, scripts, scheduled jobs —
+can query Sure through `POST /mcp`. Interactive clients use the built-in OAuth
+flow (Settings → MCP has the URL; nothing to configure). Unattended agents
+authenticate with a static bearer token that acts as your user:
+
+```bash
+# 🖥️ on the VPS — generate one token per scope you need
+openssl rand -hex 32
+```
+
+```bash
+# 📝 /opt/sure/deploy/vps/.env — then `sudo docker compose up -d`
+MCP_USER_EMAIL=<your Sure login email>
+MCP_API_TOKEN_READONLY=<hex>   # read-only: get_*/list_*/search_* tools only
+MCP_API_TOKEN=<hex>            # read + write: the full tool registry
+```
+
+**Hand the read-only token to anything unattended** — write tools are hidden
+from its tool list and answer "Unknown tool" if called anyway. Keep read +
+write for interactive assistants you trust to change data (create/update
+transactions, update budgets, import statements). Settings → MCP shows which
+token modes are configured, masked. Full detail: `docs/hosting/mcp.md`.
+
 ## If something breaks
 
 | Symptom | Fix |

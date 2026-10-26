@@ -80,7 +80,7 @@ class McpController < ApplicationController
     end
 
     def handle_tools_list
-      tools = Assistant.function_classes(mcp_user).map do |fn_class|
+      tools = scoped_function_classes.map do |fn_class|
         fn_instance = fn_class.new(mcp_user)
         {
           name: fn_instance.name,
@@ -96,10 +96,11 @@ class McpController < ApplicationController
       name = params&.dig("name")
       arguments = params&.dig("arguments") || {}
 
-      # Scoped to the authenticated user so a tool hidden from tools/list is not
-      # callable by guessing its name — a non-preview caller gets the same
-      # "Unknown tool" response as for a name that does not exist.
-      fn_class = Assistant.function_classes(mcp_user).find { |fc| fc.name == name }
+      # Scoped to the token's mcp_scope and the authenticated user so a tool
+      # hidden from tools/list is not callable by guessing its name — a
+      # read-scoped or non-preview caller gets the same "Unknown tool"
+      # response as for a name that does not exist.
+      fn_class = scoped_function_classes.find { |fc| fc.name == name }
 
       unless fn_class
         render_jsonrpc_error(request_id, -32602, "Unknown tool: #{name}")
@@ -133,22 +134,24 @@ class McpController < ApplicationController
     def authenticate_via_doorkeeper(token)
       access_token = Doorkeeper::AccessToken.by_token(token)
       return false unless access_token&.accessible?
-      return false unless access_token.scopes.include?("read_write")
+
+      mcp_scope = if access_token.scopes.include?("read_write")
+        :read_write
+      elsif access_token.scopes.include?("read")
+        :read
+      end
+      return false unless mcp_scope
 
       user = User.find_by(id: access_token.resource_owner_id)
       return false unless user&.active?
 
-      setup_mcp_session(user)
+      setup_mcp_session(user, mcp_scope)
       true
     end
 
     def authenticate_via_env_token(token)
-      expected = ENV["MCP_API_TOKEN"]
-      return false unless expected.present?
-      return false unless ActiveSupport::SecurityUtils.secure_compare(
-        OpenSSL::Digest::SHA256.hexdigest(token),
-        OpenSSL::Digest::SHA256.hexdigest(expected)
-      )
+      mcp_scope = env_token_scope(token)
+      return false unless mcp_scope
 
       user = User.find_by(email: ENV["MCP_USER_EMAIL"])
 
@@ -157,12 +160,36 @@ class McpController < ApplicationController
         return false
       end
 
-      setup_mcp_session(user)
+      setup_mcp_session(user, mcp_scope)
       true
     end
 
-    def setup_mcp_session(user)
+    # MCP_API_TOKEN keeps its historical full-registry meaning; the optional
+    # MCP_API_TOKEN_READONLY is the restricted variant for unattended agents.
+    # read_write wins when both variables hold the same token value.
+    def env_token_scope(token)
+      token_digest = OpenSSL::Digest::SHA256.hexdigest(token)
+
+      if env_token_matches?(token_digest, "MCP_API_TOKEN")
+        :read_write
+      elsif env_token_matches?(token_digest, "MCP_API_TOKEN_READONLY")
+        :read
+      end
+    end
+
+    def env_token_matches?(token_digest, env_var)
+      expected = ENV[env_var]
+      return false unless expected.present?
+
+      ActiveSupport::SecurityUtils.secure_compare(
+        token_digest,
+        OpenSSL::Digest::SHA256.hexdigest(expected)
+      )
+    end
+
+    def setup_mcp_session(user, mcp_scope)
       @mcp_user = user
+      @mcp_scope = mcp_scope
       # Build a fresh session to avoid inheriting impersonation state from
       # existing sessions (Current.user resolves via active_impersonator_session
       # first, which could leak another user's data into MCP tool calls).
@@ -174,6 +201,17 @@ class McpController < ApplicationController
 
     def mcp_user
       @mcp_user
+    end
+
+    # A read_write token sees the whole (user-gated) registry. A read token is
+    # intersected with Assistant::READ_ONLY_FUNCTIONS, so write tools are hidden
+    # from tools/list and uncallable by name — the same "Unknown tool" a client
+    # gets for a name that does not exist. An unset scope fails closed to :read.
+    def scoped_function_classes
+      classes = Assistant.function_classes(mcp_user)
+      return classes if @mcp_scope == :read_write
+
+      classes & Assistant::READ_ONLY_FUNCTIONS
     end
 
     def prepare_mcp_request_context(request_id, method, params)
