@@ -135,7 +135,8 @@ services:
       - caddy-config:/config
     healthcheck:
       # Admin API on localhost:2019 is a reliable liveness signal.
-      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ > /dev/null || exit 1"]
+      # admin API is bound to 127.0.0.1 — `localhost` may resolve to ::1 and be refused
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2019/config/ > /dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
