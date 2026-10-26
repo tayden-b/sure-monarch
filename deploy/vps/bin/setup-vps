@@ -52,10 +52,23 @@ command -v apt-get >/dev/null 2>&1 || die "apt-get not found — Debian/Ubuntu o
 
 export DEBIAN_FRONTEND=noninteractive
 
+# unattended-upgrades grabs the dpkg lock the moment it's enabled, so every
+# apt call in this script can race a backgrounded upgrade on a fresh box —
+# wait it out (flock ships with util-linux, always present on Ubuntu).
+wait_for_apt_lock() {
+  local n=0
+  while ! flock -n /var/lib/dpkg/lock-frontend -c true 2>/dev/null; do
+    n=$((n + 1))
+    [ "$n" -gt 180 ] && die "apt lock held >6 min — check: ps aux | grep -E 'unattended|apt'"
+    sleep 2
+  done
+}
+
 # ---------------------------------------------------------------------------
 # 1. Base packages + unattended security upgrades
 # ---------------------------------------------------------------------------
 step "Installing base packages + unattended-upgrades"
+wait_for_apt_lock
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl gnupg git openssl ufw fail2ban unattended-upgrades \
   >/dev/null
@@ -83,6 +96,7 @@ else
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
 https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
+  wait_for_apt_lock
   apt-get update -qq
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
     docker-buildx-plugin docker-compose-plugin >/dev/null
