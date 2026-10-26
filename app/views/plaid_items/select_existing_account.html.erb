@@ -25,6 +25,9 @@
                       ****<%= plaid_account.mask %> •
                     <% end %>
                     <%= plaid_account.plaid_item.name %> • <%= plaid_account.currency %> • <%= plaid_account.plaid_type %>
+                    <% if plaid_account.account_provider.present? %>
+                      <br><%= t(".currently_linked", account_name: plaid_account.account_provider.account&.name) %>
+                    <% end %>
                   </div>
                 </div>
               </label>

@@ -3,17 +3,16 @@ module PlaidAccount::TypeMappable
 
   UnknownAccountTypeError = Class.new(StandardError)
 
+  # Lookup shared with callers that need the accountable class a Plaid type
+  # implies without a processor instance (e.g. AccountProvider::Reattach's
+  # cross-class guard).
+  def self.accountable_class(plaid_type)
+    TYPE_MAPPING.dig(plaid_type.to_sym, :accountable) ||
+      (raise UnknownAccountTypeError, "Unknown account type: #{plaid_type}")
+  end
+
   def map_accountable(plaid_type)
-    accountable_class = TYPE_MAPPING.dig(
-      plaid_type.to_sym,
-      :accountable
-    )
-
-    unless accountable_class
-      raise UnknownAccountTypeError, "Unknown account type: #{plaid_type}"
-    end
-
-    accountable_class.new
+    PlaidAccount::TypeMappable.accountable_class(plaid_type).new
   end
 
   def map_subtype(plaid_type, plaid_subtype)

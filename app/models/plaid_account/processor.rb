@@ -39,15 +39,24 @@ class PlaidAccount::Processor
           family.accounts.find_by(plaid_account_id: plaid_account.id)
         end
 
-        # Initialize new account if not found
+        # Initialize new account if not found — but first try to attach the
+        # feed to an unlinked account imported from Monarch: linking an
+        # institution must not create a duplicate beside the imported twin
+        # that already holds the history.
+        attach_rule = nil
         if account.nil?
-          # Accounts are created here, inside the sync job, where Current.user
-          # is nil -- so Account#assign_default_owner would fall back to the
-          # family's first admin and silently hand a member's own connection to
-          # someone else. Seed the owner from the item that produced it, before
-          # the enrich_attributes calls below run validations.
-          account = family.accounts.new(owner: plaid_account.plaid_item&.owner)
-          account.accountable = map_accountable(plaid_account.plaid_type)
+          if (match = import_match)
+            account = match.account
+            attach_rule = match.rule
+          else
+            # Accounts are created here, inside the sync job, where Current.user
+            # is nil -- so Account#assign_default_owner would fall back to the
+            # family's first admin and silently hand a member's own connection to
+            # someone else. Seed the owner from the item that produced it, before
+            # the enrich_attributes calls below run validations.
+            account = family.accounts.new(owner: plaid_account.plaid_item&.owner)
+            account.accountable = map_accountable(plaid_account.plaid_type)
+          end
         end
 
         # Create or assign the accountable if needed
@@ -57,13 +66,15 @@ class PlaidAccount::Processor
         end
 
         # Name and subtype are the attributes a user can override for Plaid accounts
-        # Use enrichable pattern to respect locked attributes
+        # Use enrichable pattern to respect locked attributes.
+        # An account we just attached keeps its imported name outright —
+        # it is the user's own label for the account, never a provider rename.
         account.enrich_attributes(
           {
             name: plaid_account.name
           },
           source: "plaid"
-        )
+        ) unless attach_rule
 
         # Enrich subtype on the accountable, respecting locks
         account.accountable.enrich_attributes(
@@ -86,11 +97,28 @@ class PlaidAccount::Processor
 
         # Create account provider link if it doesn't exist
         unless account_provider
-          AccountProvider.find_or_create_by!(
+          provider_link = AccountProvider.find_or_create_by!(
             account: account,
             provider: plaid_account,
             provider_type: "PlaidAccount"
           )
+
+          if attach_rule
+            DebugLogEntry.capture(
+              category: "provider_sync",
+              level: "info",
+              message: "Plaid account attached to existing imported account (#{attach_rule} match)",
+              source: "plaid:account_processor",
+              provider_key: "plaid",
+              family: family,
+              account_provider: provider_link,
+              metadata: {
+                plaid_account_id: plaid_account.id,
+                account_id: account.id,
+                rule: attach_rule.to_s
+              }
+            )
+          end
         end
 
         # Create or update the current balance anchor valuation for event-sourced ledger
@@ -147,6 +175,17 @@ class PlaidAccount::Processor
           cash_balance: balance
         )
       end
+    end
+
+    # The imported account this provider account should attach to, if the
+    # matcher can identify it exactly once (mask or institution rules).
+    def import_match
+      @import_match ||= AccountProvider::ImportMatcher.new(
+        family: family,
+        accountable_class: map_accountable(plaid_account.plaid_type).class,
+        mask: plaid_account.mask,
+        plaid_institution_id: plaid_account.plaid_item&.institution_id
+      ).match
     end
 
     def report_exception(error)

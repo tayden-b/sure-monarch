@@ -35,9 +35,11 @@ en:
       no_available_accounts: No available Plaid accounts to link. Please connect a new Plaid account first.
       title: "Link %{account_name} to Plaid"
       description: Select a Plaid account to link to your existing account
+      currently_linked: "Currently linked to %{account_name} — selecting it moves the feed here and removes that account"
       cancel: Cancel
       link_account: Link account
     link_existing_account:
       invalid_account: Invalid Plaid account selected
       already_linked: This Plaid account is already linked
+      reattach_success: Account successfully linked to Plaid. The previous synced account was removed.
       success: Account successfully linked to Plaid

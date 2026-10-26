@@ -83,9 +83,11 @@ class SimplefinItem::Syncer
     mark_completed(sync)
   end
 
-  # Public: called by Sync after finalization; keep no-op
+  # Public: called by Sync after finalization. Merges the obvious
+  # cross-source overlaps (imported row vs. provider redelivery) so the
+  # manual dedup queue only holds judgment calls.
   def perform_post_sync
-    # no-op
+    Dedup::AutoMerger.new(family: simplefin_item.family).call
   end
 
   private
