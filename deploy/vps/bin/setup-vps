@@ -4,7 +4,7 @@
 #
 #   sudo deploy/vps/bin/setup-vps
 #
-# Run as root on a fresh Ubuntu 24.04 box. Hardens the host (unattended
+# Run as root on a fresh Ubuntu LTS box (24.04+, tested on 26.04). Hardens the host (unattended
 # upgrades, ufw, fail2ban, sshd password auth off), installs Docker Engine,
 # creates a non-root `sure` user, clones the repo (monarch-baseline) into
 # $SURE_HOME, generates every secret it can into .env, prompts only for
@@ -93,8 +93,17 @@ else
       -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
   fi
+  # Docker publishes repos per Ubuntu codename; a brand-new LTS may not have
+  # one yet — probe for ours, else fall back to noble (24.04 LTS; its packages
+  # run fine on newer releases). Override: DOCKER_CODENAME=<codename>.
+  DOCKER_CODENAME="${DOCKER_CODENAME:-$VERSION_CODENAME}"
+  if ! curl -fsS -o /dev/null \
+    "https://download.docker.com/linux/ubuntu/dists/${DOCKER_CODENAME}/Release"; then
+    DOCKER_CODENAME="noble"
+    warn "no Docker repo for '${VERSION_CODENAME}' — using '${DOCKER_CODENAME}' instead"
+  fi
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+https://download.docker.com/linux/ubuntu ${DOCKER_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
   wait_for_apt_lock
   apt-get update -qq
