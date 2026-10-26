@@ -110,13 +110,41 @@ class Dedup::ScannerTest < ActiveSupport::TestCase
     assert_equal 0, Dedup::Scanner.new(family: @family).candidates.size
   end
 
+  test "same-source pairs with provider ids are skipped by default" do
+    create_transaction(account: @checking, name: "SOFI TRANSFER", date: Date.current - 1.day, amount: 25.00, source: "monarch", external_id: "m-ss-1")
+    create_transaction(account: @checking, name: "SOFI TRANSFER", date: Date.current, amount: 25.00, source: "monarch", external_id: "m-ss-2")
+
+    assert_equal 0, @scanner.candidates.size
+  end
+
+  test "include_same_source opts back into same-store pairs" do
+    create_transaction(account: @checking, name: "SOFI TRANSFER", date: Date.current - 1.day, amount: 25.00, source: "monarch", external_id: "m-ss-3")
+    create_transaction(account: @checking, name: "SOFI TRANSFER", date: Date.current, amount: 25.00, source: "monarch", external_id: "m-ss-4")
+
+    assert_equal 1, Dedup::Scanner.new(family: @family, include_same_source: true).candidates.size
+  end
+
+  test "cross-source pair is still a candidate" do
+    create_transaction(account: @checking, name: "AMAZON.COM", date: Date.current - 1.day, amount: 42.00, source: "monarch", external_id: "m-xs-1")
+    create_transaction(account: @checking, name: "AMAZON.COM", date: Date.current, amount: 42.00, source: "plaid", external_id: "p-xs-1")
+
+    assert_equal 1, @scanner.candidates.size
+  end
+
+  test "manual rows without provenance still pair" do
+    create_transaction(account: @checking, name: "FARMERS MARKET", date: Date.current - 1.day, amount: 18.00)
+    create_transaction(account: @checking, name: "FARMERS MARKET", date: Date.current, amount: 18.00)
+
+    assert_equal 1, @scanner.candidates.size
+  end
+
   test "same-source pairs score lower than cross-source pairs" do
     same_src_a = create_transaction(account: @checking, name: "LOWES", date: Date.current, amount: 80.00, source: "plaid", external_id: "p-12")
     same_src_b = create_transaction(account: @checking, name: "LOWES", date: Date.current, amount: 80.00, source: "plaid", external_id: "p-13")
     cross_src_a = create_transaction(account: @checking, name: "MACYS", date: Date.current, amount: 90.00, source: "monarch", external_id: "m-12")
     cross_src_b = create_transaction(account: @checking, name: "MACYS", date: Date.current, amount: 90.00, source: "plaid", external_id: "p-14")
 
-    candidates = @scanner.candidates
+    candidates = Dedup::Scanner.new(family: @family, include_same_source: true).candidates
     same = candidates.find { |c| [ c.entry_a, c.entry_b ].include?(same_src_a) && [ c.entry_a, c.entry_b ].include?(same_src_b) }
     cross = candidates.find { |c| [ c.entry_a, c.entry_b ].include?(cross_src_a) && [ c.entry_a, c.entry_b ].include?(cross_src_b) }
 

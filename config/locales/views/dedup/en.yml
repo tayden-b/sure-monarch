@@ -17,6 +17,7 @@ en:
           high: "High (%{count})"
           medium: "Medium (%{count})"
           low: "Low (%{count})"
+          include_same_source: "Include same-source"
         empty: "No duplicate candidates"
         empty_filtered: "No candidates at this confidence"
         empty_description: "New candidates appear here after an import or provider sync delivers a transaction your ledger already holds."

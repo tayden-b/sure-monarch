@@ -90,6 +90,14 @@ re-running `monarch:import` on a fresher export can double rows the feed
 already delivered — `Dedup::Scanner` finds those pairs across sources and
 accounts (`source=monarch` vs `source=plaid` for the same charge).
 
+What it flags: pairs where the two rows come from different provenance
+(`monarch` vs `plaid` vs `coinbase` vs …), or where at least one row has no
+provenance at all (manual or CSV entries). What it does NOT flag: two rows
+from the same store's own feed — when both entries carry the store's
+`external_id` and the same `source`, they are two real transactions by
+definition (daily savings transfers, repeated identical card charges), not
+duplicates.
+
 ```sh
 docker compose -f .devcontainer/docker-compose.yml exec app \
   bin/rails monarch:dedup
@@ -97,14 +105,17 @@ docker compose -f .devcontainer/docker-compose.yml exec app \
 
 Prints candidate counts per account and confidence. Optional env vars:
 `ACCOUNT_ID` (one account only), `DATE_WINDOW=5` (default ±3 days),
-`LIMIT=500` (default 200), `INCLUDE_DISMISSED=1`.
+`LIMIT=500` (default 200), `INCLUDE_DISMISSED=1`, `SAME_SOURCE=1`
+(re-enable same-store pairs — useful only for a CSV-double-upload cleanup,
+not for imported/provider rows).
 
 Review and merge in the UI: start the app (`bin/dev`), sign in, open
 **http://localhost:3000/dedup/candidates**.
 
 - Candidates are grouped by the surviving account and scored
   high/medium/low (name similarity, date gap, same/cross account,
-  same/different source).
+  same/different source). The **Include same-source** filter toggle
+  re-enables same-store pairs (same as `SAME_SOURCE=1`).
 - **Merge** keeps the provider-backed row (plaid/coinbase/… over
   `source=monarch`, and pending rows always lose), absorbs the loser's
   category/merchant/notes/tags where the winner lacks them, clears

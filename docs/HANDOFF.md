@@ -166,6 +166,10 @@ institution (Trial gives you 10 Plaid Items):
 🖱️ After each link: watch the first sync land — `docker compose logs -f worker`.
 Then re-run `monarch:dedup` and clear `/dedup/candidates` (imported history
 meeting live feed is where duplicates appear; provider rows win merges — correct).
+The scan flags cross-source pairs only — Monarch rows vs the new provider
+feed, or manual/CSV rows vs anything. It does NOT flag two rows from the
+same provider's own feed: same `source` + own `external_id`s = real
+transactions, not dupes.
 
 ## 8. Safety net (~5 min)
 
@@ -201,7 +205,7 @@ cd /path/to/sure-monarch/deploy/vps
 | `plaid:sandbox_smoke` skips | It needs `PLAID_CLIENT_ID`/`PLAID_SECRET`/`PLAID_ENV=sandbox` set + `docker compose up -d`. Exit 0 without them is expected. |
 | Plaid OAuth loop/error | Redirect URI must be exactly `https://money.tayden.dev/accounts` in the dashboard AND match `APP_DOMAIN`/`PLAID_REDIRECT_URI` in `.env`. |
 | Institution won't link | Check the table in step 7 — some are manual by design. Nothing is lost: manual account or CSV. |
-| Duplicates after first bank sync | Expected — `monarch:dedup` → `/dedup/candidates`. Provider rows win merges. |
+| Duplicates after first bank sync | Expected — `monarch:dedup` → `/dedup/candidates`. Provider rows win merges. Two rows from one provider's own feed are never flagged (real transactions, not dupes); `SAME_SOURCE=1` re-enables same-store pairs for a CSV-double-upload cleanup. |
 | Re-run import | `monarch:revert` first (full delete of imported records), then re-import. |
 | Restore a backup | `cd /opt/sure/deploy/vps && ./bin/restore` (latest) or `./bin/restore backups/<file>.dump` — it stops web/worker, restores, restarts. |
 | Want factory reset | `cd /opt/sure/deploy/vps && docker compose down -v` (deletes DB+volumes) → re-run `setup-vps`. `./bin/backup` FIRST. |

@@ -28,7 +28,7 @@ namespace :monarch do
   end
 
   desc "Scan the family ledger for cross-source duplicate transactions and print where to review them. " \
-       "Usage: bin/rails monarch:dedup (optional: ACCOUNT_ID=..., DATE_WINDOW=5, LIMIT=500, INCLUDE_DISMISSED=1)"
+       "Usage: bin/rails monarch:dedup (optional: ACCOUNT_ID=..., DATE_WINDOW=5, LIMIT=500, INCLUDE_DISMISSED=1, SAME_SOURCE=1)"
   task dedup: :environment do
     family = ENV["FAMILY_ID"].present? ? Family.find(ENV["FAMILY_ID"]) : Family.first
     abort "No family found — set FAMILY_ID or create an account first." unless family
@@ -38,7 +38,8 @@ namespace :monarch do
       account: ENV["ACCOUNT_ID"].present? ? family.accounts.find(ENV["ACCOUNT_ID"]) : nil,
       date_window: (ENV["DATE_WINDOW"] || Dedup::Scanner::DEFAULT_DATE_WINDOW).to_i,
       limit: (ENV["LIMIT"] || Dedup::Scanner::DEFAULT_LIMIT).to_i,
-      include_dismissed: ENV["INCLUDE_DISMISSED"] == "1"
+      include_dismissed: ENV["INCLUDE_DISMISSED"] == "1",
+      include_same_source: ENV["SAME_SOURCE"] == "1"
     )
     summary = scanner.summary
 

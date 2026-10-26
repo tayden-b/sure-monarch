@@ -13,15 +13,20 @@
         text: t(".filters.all"),
         variant: @confidence_filter.nil? ? "secondary" : "ghost",
         size: "sm",
-        href: dedup_candidates_path) %>
+        href: dedup_candidates_path(same_source: @include_same_source ? "1" : nil)) %>
       <% %w[high medium low].each do |level| %>
         <% count = @summary[:by_confidence][level.to_sym].to_i %>
         <%= render DS::Link.new(
           text: t(".filters.#{level}", count: count),
           variant: @confidence_filter == level ? "secondary" : "ghost",
           size: "sm",
-          href: dedup_candidates_path(confidence: level)) %>
+          href: dedup_candidates_path(confidence: level, same_source: @include_same_source ? "1" : nil)) %>
       <% end %>
+      <%= render DS::Link.new(
+        text: t(".filters.include_same_source"),
+        variant: @include_same_source ? "secondary" : "ghost",
+        size: "sm",
+        href: dedup_candidates_path(confidence: @confidence_filter, same_source: @include_same_source ? nil : "1")) %>
     </div>
   </div>
 
@@ -48,7 +53,7 @@
     <div class="bg-container rounded-xl shadow-border-xs p-8">
       <%= render DS::EmptyState.new(
         icon: "circle-check-big",
-        title: @confidence_filter ? t(".empty_filtered") : t(".empty"),
+        title: @confidence_filter || @include_same_source ? t(".empty_filtered") : t(".empty"),
         description: t(".empty_description")) %>
     </div>
   <% end %>
