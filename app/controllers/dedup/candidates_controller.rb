@@ -13,8 +13,9 @@ class Dedup::CandidatesController < ApplicationController
       [ t(".title"), nil ]
     ]
     @confidence_filter = params[:confidence].presence_in(%w[high medium low])
+    @include_same_source = params[:same_source] == "1"
 
-    scanner = Dedup::Scanner.new(family: Current.family)
+    scanner = Dedup::Scanner.new(family: Current.family, include_same_source: @include_same_source)
     @summary = scanner.summary
 
     list = scanner.candidates
