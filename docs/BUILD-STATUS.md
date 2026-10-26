@@ -79,8 +79,14 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   caused by this build; workers must keep reporting them as baseline failures.
 - First real-archive dry run (on the VPS) surfaced 4 importer defects —
   multi-cash holdings, rule reorder after a skipped rule, real operator
-  spellings (eq/lt/gt…), unmapped security types — fixed on
-  `work/importer-realdata-fixes`; quirks documented in RUNBOOK §7.
+  spellings (eq/lt/gt…), unmapped security types — **fixed + merged** in
+  [#21](https://github.com/tayden-b/sure-monarch/pull/21) (`e2ba4d25`);
+  quirks documented in RUNBOOK §7.
+- [#19](https://github.com/tayden-b/sure-monarch/pull/19) merged (`931b541a`):
+  flex edit now turbo-refreshes the plan headroom/donut region (T7 leftover).
+- VPS kit OVH fixes (sshd drop-in vs cloud-init ordering, `sure` key mirror,
+  archive perms for uid 1000) — in flight on `work/vps-kit-ovh-fixes`
+  (session e8c91f85), PR pending.
 
 ## What Tayden must do by hand (running list)
 
@@ -95,7 +101,8 @@ A consolidated ordered checklist lands in docs/HANDOFF.md at the end of the buil
 
 ## What's next
 
-Build complete. Tayden runs `docs/HANDOFF.md` on a public VPS (≈45–60 min active).
-Remaining deferrals are documented in "Open issues" above: Plaid keys,
-the real VPS + `money.tayden.dev` DNS, his real archive, and accepted
-importer defers.
+Build complete and **live**: https://money.tayden.dev is up, account created,
+onboarding closed, Plaid sandbox keys set, real-archive import run (4
+importer defects found + fixed, #21). Remaining: `work/vps-kit-ovh-fixes`
+PR when its worker pushes, then production Plaid keys + institution links
+per docs/HANDOFF.md §6–7.
