@@ -24,6 +24,15 @@ class Monarch::ArchiveTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 9, 29), archive.as_of_date
   end
 
+  test "as_of_date comes from VALIDATION.json's validated_at" do
+    archive = build_archive(
+      { "balance_history" => [ { "account_id" => "a1", "date" => "2026-09-30", "signedBalance" => 1.0 } ] },
+      { "validated_at" => "2026-09-29T18:09:00.935879+00:00" }
+    )
+    # Real Monarch archives stamp the export under `validated_at`.
+    assert_equal Date.new(2026, 9, 29), archive.as_of_date
+  end
+
   test "as_of_date falls back to the newest balance_history date" do
     archive = build_archive(
       "balance_history" => [

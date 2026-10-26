@@ -75,7 +75,7 @@ class Monarch::Archive
 
   private
     # Timestamp keys real VALIDATION.json files have been seen to carry.
-    VALIDATION_TIMESTAMP_KEYS = %w[generated_at generatedAt exported_at exportedAt].freeze
+    VALIDATION_TIMESTAMP_KEYS = %w[validated_at validatedAt generated_at generatedAt exported_at exportedAt].freeze
 
     def import_dir
       root.join("import")
