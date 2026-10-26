@@ -369,21 +369,21 @@ step "Preparing data/archive + backups"
 # bind-mount ./data/archive at /archive. Owned by $SURE_USER, the importer
 # gets "Permission denied" on /archive/import — hand it to the app uid
 # (detected from the built image; 1000 fallback matches the Dockerfile).
+# Group stays $SURE_USER so the docker build-context sender (which runs as
+# the invoking user via `pull_policy: build`, and does not honor
+# .dockerignore) can still traverse it — 750 alone locks it out.
 # After copying the export in later, re-run bin/fix-archive-perms.
-APP_UID=1000; APP_GID=1000
+APP_UID=1000
 img_user="$(docker image inspect sure-monarch:local --format '{{.Config.User}}' 2>/dev/null || true)"
-if [ -n "$img_user" ]; then
-  APP_UID="${img_user%%:*}"
-  APP_GID="${img_user#*:}"
-fi
+[ -n "$img_user" ] && APP_UID="${img_user%%:*}"
 mkdir -p "$KIT_DIR/data/archive" "$KIT_DIR/backups"
-chown -R "$APP_UID:$APP_GID" "$KIT_DIR/data/archive"
+chown -R "$APP_UID:$SURE_USER" "$KIT_DIR/data/archive"
 # bin/backup writes dumps host-side as $SURE_USER (the systemd unit runs as
 # $SURE_USER too), so backups/ must stay $SURE_USER-owned — the db container
 # mounts it only for manual in-container dumps.
 chown -R "$SURE_USER:$SURE_USER" "$KIT_DIR/backups"
 chmod 750 "$KIT_DIR/data/archive" "$KIT_DIR/backups"
-say "  data/archive → uid ${APP_UID}:${APP_GID}, backups → ${SURE_USER} (mode 750)"
+say "  data/archive → uid ${APP_UID}:${SURE_USER}, backups → ${SURE_USER} (mode 750)"
 
 step "Starting the stack"
 compose up -d

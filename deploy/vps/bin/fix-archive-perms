@@ -9,6 +9,10 @@
 # as `sure`, `ubuntu` or root land with the wrong owner and the importer gets
 # "Permission denied" on /archive/import. Run this after copying the Monarch
 # export in — or any time /archive perms look wrong. Idempotent.
+#
+# Group on archive files is the service user (sure): the docker build-context
+# sender walks the repo as that user (pull_policy: build) and is not
+# .dockerignore-aware, so everything under data/ must stay group-readable.
 # ===========================================================================
 set -euo pipefail
 
@@ -28,17 +32,22 @@ if [ -n "$img_user" ]; then
   APP_GID="${img_user#*:}"
 fi
 
-# Archive contents only need to be readable by the app uid (the mount is :ro).
-mkdir -p "$KIT_DIR/data/archive" "$KIT_DIR/backups"
-chown -R "$APP_UID:$APP_GID" "$KIT_DIR/data/archive"
-chmod -R u+rX "$KIT_DIR/data/archive"
-chmod 750 "$KIT_DIR/data/archive"
-
 # bin/backup writes dumps host-side as the service user, so backups/ stays
 # service-owned (sure by default); override with SURE_USER if you renamed it.
 SURE_USER="${SURE_USER:-sure}"
+
+# Archive contents only need to be readable by the app uid (the mount is
+# :ro). Group = $SURE_USER so the build-context sender (which runs as that
+# user and ignores .dockerignore) can still traverse and read everything —
+# operator-copied files land with varying owners/modes; g+rX keeps re-runs
+# of `docker compose up -d` working. o-rwx keeps exports private.
+mkdir -p "$KIT_DIR/data/archive" "$KIT_DIR/backups"
+chown -R "$APP_UID:$SURE_USER" "$KIT_DIR/data/archive"
+chmod -R u+rwX,g+rX,o-rwx "$KIT_DIR/data/archive"
+chmod 750 "$KIT_DIR/data/archive"
+
 chown -R "$SURE_USER:$SURE_USER" "$KIT_DIR/backups" 2>/dev/null \
   || chown -R "$APP_UID:$APP_GID" "$KIT_DIR/backups"
 chmod 750 "$KIT_DIR/backups"
 
-echo "done: data/archive → uid ${APP_UID}:${APP_GID} (u+rX, top 750); backups → ${SURE_USER} (750)"
+echo "done: data/archive → uid ${APP_UID}:${SURE_USER} (ug+rX, top 750); backups → ${SURE_USER} (750)"
