@@ -178,8 +178,26 @@ importer today:
   `security.type == "cash"` holdings (money-market sweep funds like FDRXX/SPAXX,
   stablecoins like USDC-USD, the raw `CUR:USD` line). They are summed into one
   cash holding (`external_id: "cash:<monarch account id>"`, qty = amount = the
-  summed value, price 1, dated at import day); every contributing Monarch
-  holding id still maps to it.
+  summed value, price 1, dated at the archive's as-of date); every
+  contributing Monarch holding id still maps to it.
+- **Holdings carry no reliable timestamp** — most real `holdings` records
+  have a null `closingPriceUpdatedAt` (a security-level field, usually
+  unchanged on export day). Dating them at import day placed them a month
+  after the archive's last valuation, which doubled investment balances
+  (Sure carried the valuation forward as cash and added the holdings on
+  top). Holdings now date at the archive's as-of date — the export date
+  from `VALIDATION.json`'s `generated_at`, else the newest balance_history
+  date, else today — and a non-null `closingPriceUpdatedAt` is kept only
+  when it is not past as-of. The anchor valuation for accounts without
+  balance_history dates at as-of for the same reason.
+- **Deactivated accounts stop syncing before they close** — their
+  balance_history typically ends days before `deactivatedAt`, so the
+  imported balance would sit at the stale pre-closure amount while Monarch
+  shows the closing balance (usually 0) and hides the account. The importer
+  writes one closing valuation at `deactivatedAt` with the account's
+  closing balance (`displayBalance`/`currentBalance`, 0 if null) so the
+  balance series ends where the account actually closed, alongside the
+  disabled/hidden flags `import_accounts` already sets.
 - **Rules with no mappable criteria** are skipped as
   `no_mappable_criteria` — e.g. criteria on fields Sure does not carry. They
   leave no `rules` row and do not break position reordering of the others.
