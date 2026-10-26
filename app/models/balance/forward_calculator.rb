@@ -116,9 +116,15 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
       # only affects the pre-anchor opening day's adjustment, not later totals.
       return [ 0, 0 ] if calculation_start_date < account.opening_anchor_date
 
+      # The seed is the START-of-day position on the opening date, so holdings
+      # are valued one day back. Valuing on the opening date itself would put
+      # that day's holdings in the seed AND in that day's market-value change,
+      # double-counting them in the generated end_balance column (the same
+      # goes for holdings dated before the opening, whose value belongs in the
+      # start-of-day non-cash position).
       cash = derive_cash_balance_on_date_from_total(
         total_balance: account.opening_anchor_balance,
-        date: account.opening_anchor_date
+        date: account.opening_anchor_date - 1
       )
       [ cash, account.opening_anchor_balance - cash ]
     end

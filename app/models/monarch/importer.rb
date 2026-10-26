@@ -91,6 +91,7 @@ class Monarch::Importer
         import_goals
         import_transactions
         import_balance_history
+        close_deactivated_accounts
         anchor_accounts_without_history
         import_holdings
         import_rules
@@ -600,8 +601,8 @@ class Monarch::Importer
     # Accounts with no balance_history rows still carry a signedBalance. The
     # forward materializer recomputes balances from the opening anchor, which
     # an entry-less account lacks, and would overwrite the imported balance
-    # with 0. Write one reconciliation valuation at the current date so every
-    # imported account anchors to its Monarch balance.
+    # with 0. Write one reconciliation valuation at the archive's as-of date
+    # so every imported account anchors to its Monarch balance as of export.
     #
     # Not counted in the report: these are internal anchors and the
     # balance_history counts must keep matching the archive's row count.
@@ -628,12 +629,66 @@ class Monarch::Importer
         )
         entry.entryable ||= Valuation.new(kind: "reconciliation")
         entry.assign_attributes(
-          date: Date.current,
+          date: archive.as_of_date,
           amount: account.balance || 0,
           currency: account.currency,
           name: Valuation.build_reconciliation_name(account.accountable_type)
         )
         entry.save!
+      end
+    end
+
+    # A deactivated Monarch account's balance_history ends at its last synced
+    # point — often days before deactivation — so without a closing entry its
+    # materialized balance would sit at the stale amount forever while Monarch
+    # shows the closing balance (usually 0) and hides the account. Write one
+    # reconciliation valuation at `deactivatedAt` holding the account's closing
+    # balance so the balance series ends where the account actually closed.
+    # The status/flag mapping in account_attributes already marks it disabled.
+    #
+    # Runs before anchor_accounts_without_history so a deactivated account
+    # with no history gets only the closing valuation, not an as-of anchor
+    # that would re-anchor its balance after the closing date.
+    #
+    # Reported as its own `account_closures` line (not under balance_history)
+    # so that collection's counts keep matching the archive's row count.
+    def close_deactivated_accounts
+      records = archive.records("accounts").select { |r| parse_date(r["deactivatedAt"]).present? }
+      report.archive_count("account_closures", records.size)
+
+      records.each do |r|
+        deactivated_at = parse_date(r["deactivatedAt"])
+
+        account_id = mapped_record_id("accounts", r["id"])
+        account = account_id && family.accounts.find_by(id: account_id)
+        unless account
+          report.skipped("account_closures", "unknown_account")
+          next
+        end
+
+        # Same closing-balance convention as account_attributes: what Monarch
+        # displays (displayBalance), else currentBalance, abs'd for liability
+        # accounts under Sure's positive-liability convention.
+        closing = (r["displayBalance"].presence || r["currentBalance"]).to_d
+        closing = closing.abs if account.classification == "liability"
+
+        entry = account.entries.find_or_initialize_by(source: SOURCE, external_id: "closed:#{r["id"]}")
+        entry.entryable ||= Valuation.new(kind: "reconciliation")
+        was_new = entry.new_record?
+        entry.assign_attributes(
+          date: deactivated_at,
+          amount: closing,
+          currency: account.currency,
+          name: Valuation.build_reconciliation_name(account.accountable_type)
+        )
+
+        begin
+          entry.save!
+          record_mapping!("balance_history", "closed:#{r["id"]}", entry, r)
+          was_new ? report.created("account_closures") : report.updated("account_closures")
+        rescue ActiveRecord::RecordInvalid => e
+          report.error("account_closures", r["id"], e.message)
+        end
       end
     end
 
@@ -669,7 +724,7 @@ class Monarch::Importer
         qty = r["quantity"].to_d
         value = r["value"].to_d
         price = (r["closingPrice"] || r.dig("security", "currentPrice") || (qty.zero? ? value : value / qty)).to_d
-        date = parse_date(r["closingPriceUpdatedAt"]) || Date.current
+        date = holding_date(r, account)
 
         holding = account.holdings.find_or_initialize_by(external_id: r["id"].to_s)
         was_new = holding.new_record?
@@ -699,7 +754,7 @@ class Monarch::Importer
           amount: bucket[:value],
           cost_basis: nil,
           cost_basis_source: nil,
-          date: Date.current,
+          date: holding_date({}, account),
           currency: family.currency
         )
         holding.save!
@@ -714,6 +769,29 @@ class Monarch::Importer
 
     def cash_security?(r)
       (r["security"] || {})["type"] == "cash"
+    end
+
+    # Holdings are a snapshot taken at export time: most real records carry a
+    # null closingPriceUpdatedAt, so dating them at import day placed them a
+    # month after the archive's last valuation — the forward calculator then
+    # carried that valuation forward as cash AND added the holdings on top,
+    # doubling the account. Date them at the archive's as-of date instead;
+    # a real closingPriceUpdatedAt is kept only when it is not past as-of.
+    #
+    # Two clamps keep the date inside the account's balance series: a position
+    # cannot outlive a deactivated account's closing date, and a date before
+    # the opening entry would read as a phantom "holdings dropped to zero"
+    # market loss on the series' first day (start-of-day holdings are looked
+    # up one day back but their value was never seeded).
+    def holding_date(r, account)
+      closing = parse_date(r["closingPriceUpdatedAt"])
+      date = closing.present? && closing <= archive.as_of_date ? closing : archive.as_of_date
+
+      closing_day = account.disabled_at&.to_date
+      date = closing_day if closing_day && date > closing_day
+
+      opening = account.opening_anchor_date
+      opening.present? && date < opening ? opening : date
     end
 
     def find_security(r, account)

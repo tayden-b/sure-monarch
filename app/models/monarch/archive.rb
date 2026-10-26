@@ -61,12 +61,40 @@ class Monarch::Archive
     file.exist? ? JSON.parse(file.read) : nil
   end
 
+  # The date the archive's data is accurate as of — the export date.
+  # VALIDATION.json carries the exporter's generation timestamp; when it is
+  # absent the newest balance_history date is the best available proxy, and
+  # an archive with neither falls back to today.
+  def as_of_date
+    @as_of_date ||= validation_as_of_date || max_balance_history_date || Date.current
+  end
+
   def name
     root.basename.to_s
   end
 
   private
+    # Timestamp keys real VALIDATION.json files have been seen to carry.
+    VALIDATION_TIMESTAMP_KEYS = %w[generated_at generatedAt exported_at exportedAt].freeze
+
     def import_dir
       root.join("import")
+    end
+
+    def validation_as_of_date
+      ts = VALIDATION_TIMESTAMP_KEYS.lazy.filter_map { |key| validation&.[](key) }.first
+      parse_date(ts)
+    end
+
+    def max_balance_history_date
+      records("balance_history").filter_map { |r| parse_date(r["date"]) }.max
+    end
+
+    def parse_date(value)
+      return nil if value.blank?
+
+      Date.parse(value.to_s)
+    rescue Date::Error
+      nil
     end
 end

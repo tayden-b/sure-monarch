@@ -14,13 +14,14 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
   end
 
   # Builds a minimal archive holding only the given collections and imports it.
-  def import_with(collections)
+  def import_with(collections, validation = nil)
     Dir.mktmpdir do |dir|
       import_dir = Pathname.new(dir).join("import")
       FileUtils.mkdir_p(import_dir)
       collections.each do |name, records|
         import_dir.join("#{name}.json").write(JSON.pretty_generate(records))
       end
+      Pathname.new(dir).join("VALIDATION.json").write(JSON.pretty_generate(validation)) if validation
       Monarch::Importer.new(family: @family, archive_path: dir, io: File.open(File::NULL, "w")).run
     end
   end
@@ -266,19 +267,22 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
 
     # acc-brokerage: signedBalance 25000 with holdings AAPL 2550 + an explicit
     # cash position of 500. The cash position must not be added on top of the
-    # total (double-counted into non-cash) nor dropped from the ledger.
+    # total (double-counted into non-cash) nor dropped from the ledger. The
+    # AAPL position lands inside the same date as the valuation, so the cash
+    # sleeve is the total minus that position's value.
     account = @family.accounts.find(mapping_for("accounts", "acc-brokerage").record_id)
     assert_equal 25_000, account.balance
-    assert_equal 25_000, account.cash_balance
+    assert_equal 22_450, account.cash_balance
 
     cash_holding = account.holdings.joins(:security).find_by(securities: { kind: "cash" })
     assert_not_nil cash_holding, "the Monarch cash position should still import as a holding row"
     assert_equal 500, cash_holding.amount
 
-    # On the cash holding's own date the position folds into cash, not on top.
-    balance = account.balances.find_by(date: cash_holding.date)
+    # The cash position folds into cash, never stacked on top: the series'
+    # last balance (the 2026-09-30 valuation) holds total minus equities.
+    balance = account.balances.order(:date).last
     assert_equal 25_000, balance.balance
-    assert_equal 25_000, balance.cash_balance
+    assert_equal 22_450, balance.cash_balance
   end
 
   test "accounts without balance history keep their signed balance after materialization" do
@@ -302,9 +306,10 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
       assert_equal expected, account.balance.to_f, "#{monarch_id} balance"
     end
 
-    # Anchored accounts expose a materialized balance at the current date.
+    # Anchored accounts expose a materialized balance at the archive's as-of
+    # date (the fixture's VALIDATION.json generated_at is 2026-09-29).
     account = @family.accounts.find(mapping_for("accounts", "acc-401k").record_id)
-    assert_equal 80_000, account.balances.find_by(date: Date.current).balance
+    assert_equal 80_000, account.balances.find_by(date: Date.new(2026, 9, 29)).balance
 
     # Re-importing must not create a second valuation for anchored accounts.
     assert_no_difference -> { Entry.where(entryable_type: "Valuation").count } do
@@ -564,13 +569,112 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal "TARGETRETIREMENT2065", holding.security.name
   end
 
+  # Holdings whose closingPriceUpdatedAt is null (the common case in real
+  # archives) must date at the archive's as-of date — the same date as the
+  # last balance_history point — so the forward calculator sees the valuation
+  # as the account total (cash = valuation − holdings = 0) instead of
+  # carrying the valuation forward as cash and stacking holdings on top.
+  test "investment account balances don't double when holdings and last valuation share the as-of date" do
+    as_of = Date.new(2026, 9, 29)
+    account = {
+      "id" => "acc-brokerage", "displayName" => "Brokerage",
+      "currentBalance" => 1000.0, "displayBalance" => 1000.0, "signedBalance" => 1000.0,
+      "type" => { "name" => "brokerage" }, "subtype" => { "name" => "brokerage" },
+      "isAsset" => true, "isLiability" => false
+    }
+    balance_history = [
+      { "account_id" => "acc-brokerage", "date" => "2026-09-01", "signedBalance" => 900.0 },
+      { "account_id" => "acc-brokerage", "date" => as_of.to_s, "signedBalance" => 1000.0 }
+    ]
+    holdings = [
+      {
+        "id" => "hold-a", "account_id" => "acc-brokerage",
+        "name" => "Fund A", "type" => "mutual fund", "quantity" => 6.0, "value" => 600.0,
+        "closingPrice" => 100.0, "closingPriceUpdatedAt" => nil,
+        "security" => { "id" => "sec-fa", "name" => "Fund A", "ticker" => "FNDA", "type" => "mutual fund" }
+      },
+      {
+        "id" => "hold-b", "account_id" => "acc-brokerage",
+        "name" => "Fund B", "type" => "mutual fund", "quantity" => 4.0, "value" => 400.0,
+        "closingPrice" => 100.0, "closingPriceUpdatedAt" => nil,
+        "security" => { "id" => "sec-fb", "name" => "Fund B", "ticker" => "FNDB", "type" => "mutual fund" }
+      }
+    ]
+
+    import = import_with(
+      { "accounts" => [ account ], "balance_history" => balance_history, "holdings" => holdings },
+      { "generated_at" => "2026-09-29T00:00:00Z" }
+    )
+    assert import.complete?
+
+    account = @family.accounts.find(mapping_for("accounts", "acc-brokerage").record_id)
+    assert account.holdings.all? { |h| h.date == as_of }, "holdings should date at the as-of date"
+    assert_equal 1000, account.balance.to_f
+    assert_equal 0, account.cash_balance.to_f
+    assert_equal 1000, account.balances.find_by(date: as_of).balance.to_f
+
+    # The series must end at the as-of date: rematerializing a month later
+    # still reports the Monarch total, not balance + holdings again.
+    travel_to as_of + 30 do
+      Balance::Materializer.new(account, strategy: :forward, security_ids: account.holdings.select(:security_id)).materialize_balances
+      assert_equal 1000, account.reload.balance.to_f
+      assert_empty account.balances.where("date > ?", as_of)
+    end
+  end
+
+  test "deactivated accounts get a closing valuation at deactivatedAt" do
+    account = {
+      "id" => "acc-closed", "displayName" => "Closed Card",
+      "currentBalance" => 0.0, "displayBalance" => -0.0, "signedBalance" => 0.0,
+      "type" => { "name" => "credit" }, "subtype" => { "name" => "credit_card" },
+      "isAsset" => false, "isLiability" => true,
+      "isHidden" => true, "deactivatedAt" => "2026-03-04"
+    }
+    balance_history = [
+      { "account_id" => "acc-closed", "date" => "2026-03-01", "signedBalance" => -300.0 },
+      { "account_id" => "acc-closed", "date" => "2026-03-03", "signedBalance" => -500.0 }
+    ]
+
+    import = import_with("accounts" => [ account ], "balance_history" => balance_history)
+    assert import.complete?
+
+    record = @family.accounts.find(mapping_for("accounts", "acc-closed").record_id)
+    assert_equal "disabled", record.status
+    assert_equal 0, record.balance.to_f
+    assert_not @family.accounts.visible.exists?(record.id)
+
+    closing = record.entries.find_by(source: "monarch", external_id: "closed:acc-closed")
+    assert_equal Date.new(2026, 3, 4), closing.date
+    assert_equal 0, closing.amount.to_f
+    assert_equal "reconciliation", closing.entryable.kind
+
+    # Re-import updates the closing entry in place — no duplicates.
+    assert_no_difference -> { Entry.where(source: "monarch", external_id: "closed:acc-closed").count } do
+      import_with("accounts" => [ account ], "balance_history" => balance_history)
+    end
+  end
+
   test "revert removes everything the import created" do
     run_import
+
+    imported_account_ids = @family.accounts.where("name IN (?)", [
+      "Everyday Checking", "Emergency Savings", "Rewards Card", "Taxable Brokerage",
+      "Work 401k", "Coinbase", "Traditional IRA", "Roth IRA", "Health Savings",
+      "Old Pension", "Old Joint Card", "Side Savings (Hidden)"
+    ]).pluck(:id)
+    assert_equal 12, imported_account_ids.size
+
+    # The closing valuation written for the deactivated fixture account.
+    assert Entry.where(source: "monarch", external_id: "closed:acc-hidden").exists?
+    assert Holding.where(account_id: imported_account_ids).exists?
+
     Monarch::Reverter.new(family: @family, io: File.open(File::NULL, "w")).run
 
     assert_equal 0, MonarchSourceMapping.where(family: @family).count
     assert_equal 0, MonarchImport.where(family: @family).count
     assert_empty Entry.where(source: "monarch")
+    assert_empty Holding.where(account_id: imported_account_ids)
+    assert_empty Balance.where(account_id: imported_account_ids)
     assert_empty @family.accounts.where(name: "Everyday Checking")
     assert_empty @family.categories.where(name: "Groceries")
     assert_empty @family.category_groups.where(name: "Everyday Expenses")
