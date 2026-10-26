@@ -46,14 +46,15 @@ class Monarch::Importer
   # Monarch security.type -> Sure asset_sub_class.
   SECURITY_TYPE_MAP = {
     "equity" => "stock", "etf" => "etf", "cryptocurrency" => "cryptocurrency",
-    "cash" => "cash", "mutual_fund" => "mutual_fund", "other" => "other",
-    "bond" => "bond", "option" => "other", "derivative" => "other"
+    "cash" => "cash", "mutual_fund" => "mutual_fund", "other" => nil,
+    "bond" => "bond", "option" => nil, "derivative" => nil
   }.freeze
 
   # Monarch merchantCriteria/merchantNameCriteria operator -> Sure text operator.
   TEXT_OPERATOR_MAP = {
     "contains" => "like", "not_contains" => "not_like", "does_not_contain" => "not_like",
     "is" => "=", "is_not" => "!=", "equals" => "=", "not_equals" => "!=",
+    "eq" => "=", "neq" => "!=", "ne" => "!=", "not_eq" => "!=",
     "starts_with" => "like", "ends_with" => "like"
   }.freeze
 
@@ -62,7 +63,8 @@ class Monarch::Importer
     "less_than" => "<", "less_than_or_equal" => "<=",
     "equal_to" => "=", "not_equal_to" => "!=",
     "equals" => "=", "greaterThan" => ">", "greaterThanOrEqual" => ">=",
-    "lessThan" => "<", "lessThanOrEqual" => "<=", "equalTo" => "="
+    "lessThan" => "<", "lessThanOrEqual" => "<=", "equalTo" => "=",
+    "eq" => "=", "neq" => "!=", "ne" => "!=", "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<="
   }.freeze
 
   attr_reader :family, :archive, :dry_run, :report, :monarch_import
@@ -637,12 +639,29 @@ class Monarch::Importer
 
     # -------------------------------------------------------------- holdings
 
+    # Monarch may hold several "cash" positions in one account (money-market
+    # sweep funds, stablecoins, the raw currency line) but Sure has exactly one
+    # cash security per account and a unique (account, security, date,
+    # currency) index on holdings. Cash records are therefore summed into a
+    # single holding per account keyed by `external_id: "cash:<monarch account
+    # id>"`; every contributing Monarch id maps to that one holding.
     def import_holdings
+      cash_positions = Hash.new { |h, k| h[k] = { account: nil, value: 0.to_d, records: [] } }
+
       each_record("holdings") do |r|
-        account_id = mapped_record_id("accounts", r["account_id"] || r.dig("account", "id"))
+        monarch_account_id = r["account_id"] || r.dig("account", "id")
+        account_id = mapped_record_id("accounts", monarch_account_id)
         account = account_id && family.accounts.find_by(id: account_id)
         unless account
           report.skipped("holdings", "unknown_account")
+          next
+        end
+
+        if cash_security?(r)
+          bucket = cash_positions[monarch_account_id.to_s]
+          bucket[:account] = account
+          bucket[:value] += r["value"].to_d
+          bucket[:records] << r
           next
         end
 
@@ -668,17 +687,44 @@ class Monarch::Importer
         record_mapping!("holdings", r["id"], holding, r)
         was_new ? report.created("holdings") : report.updated("holdings")
       end
+
+      cash_positions.each do |monarch_account_id, bucket|
+        account = bucket[:account]
+        holding = account.holdings.find_or_initialize_by(external_id: "cash:#{monarch_account_id}")
+        was_new = holding.new_record?
+        holding.assign_attributes(
+          security: Security.cash_for(account),
+          qty: bucket[:value],
+          price: 1,
+          amount: bucket[:value],
+          cost_basis: nil,
+          cost_basis_source: nil,
+          date: Date.current,
+          currency: family.currency
+        )
+        holding.save!
+        bucket[:records].each do |r|
+          record_mapping!("holdings", r["id"], holding, r)
+          was_new ? report.created("holdings") : report.updated("holdings")
+        end
+      rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotSaved => e
+        bucket[:records].each { |r| report.error("holdings", r["id"], e.message) }
+      end
+    end
+
+    def cash_security?(r)
+      (r["security"] || {})["type"] == "cash"
     end
 
     def find_security(r, account)
       s = r["security"] || {}
-      return Security.cash_for(account) if s["type"] == "cash"
+      return Security.cash_for(account) if cash_security?(r)
 
       ticker = s["ticker"].presence || r["ticker"].presence || "MONARCH-#{s["id"] || r["id"]}"
       Security.find_or_initialize_by_ticker_and_exchange(ticker: ticker, exchange_operating_mic: nil).tap do |sec|
         sec.assign_attributes(
           name: s["name"].presence || ticker,
-          asset_sub_class: SECURITY_TYPE_MAP[s["type"]] || "other",
+          asset_sub_class: SECURITY_TYPE_MAP[s["type"]],
           kind: "standard",
           offline: true
         )
@@ -709,12 +755,15 @@ class Monarch::Importer
       # Imported rules rank first in Monarch order; rules not in this list
       # (Sure-created ones, or a previously-imported rule skipped this run)
       # keep their relative order at the end.
+      family.rules.reset
       Rule.reorder!(family, imported_ids.compact)
     end
 
     def import_rule(r)
       rule_id = mapped_record_id("rules", r["id"])
-      rule = rule_id ? family.rules.find_by(id: rule_id) : family.rules.new(resource_type: "transaction")
+      # Rule.new (not family.rules.new) so a rule skipped below never lingers
+      # unsaved in the association that Rule.reorder! walks afterwards.
+      rule = (rule_id && family.rules.find_by(id: rule_id)) || Rule.new(family: family, resource_type: "transaction")
       rule.name = rule_name(r)
       rule.active = true
 

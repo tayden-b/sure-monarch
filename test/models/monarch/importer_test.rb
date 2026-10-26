@@ -13,6 +13,18 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     Monarch::Importer.new(family: @family, archive_path: ARCHIVE, dry_run: dry_run, io: File.open(File::NULL, "w")).run
   end
 
+  # Builds a minimal archive holding only the given collections and imports it.
+  def import_with(collections)
+    Dir.mktmpdir do |dir|
+      import_dir = Pathname.new(dir).join("import")
+      FileUtils.mkdir_p(import_dir)
+      collections.each do |name, records|
+        import_dir.join("#{name}.json").write(JSON.pretty_generate(records))
+      end
+      Monarch::Importer.new(family: @family, archive_path: dir, io: File.open(File::NULL, "w")).run
+    end
+  end
+
   def mapping_for(collection, monarch_id)
     MonarchSourceMapping.find_by(family: @family, collection: collection, monarch_id: monarch_id)
   end
@@ -413,6 +425,143 @@ class Monarch::ImporterTest < ActiveSupport::TestCase
     assert_equal 7, report["transactions"]["created"]
     assert_equal 1, report["transactions"]["skipped"]["merged_duplicate"]
     assert_not Entry.exists?(source: "monarch", external_id: "txn-1")
+  end
+
+  # -------------------------------------------------- real-archive regressions
+
+  test "multiple cash positions in one account sum into a single cash holding" do
+    crypto_account = {
+      "id" => "acc-1", "displayName" => "Coinbase",
+      "currentBalance" => 3200.0, "displayBalance" => 3200.0, "signedBalance" => 3200.0,
+      "type" => { "name" => "brokerage" }, "subtype" => { "name" => "cryptocurrency" },
+      "isAsset" => true, "isLiability" => false
+    }
+    holdings = [
+      {
+        "id" => "hold-cash-usdc", "account_id" => "acc-1",
+        "name" => "USDC-USD", "type" => "cash", "quantity" => 0.0, "value" => 0.0,
+        "security" => { "id" => "sec-usdc", "name" => "USDC-USD", "ticker" => "USDC-USD", "type" => "cash" }
+      },
+      {
+        "id" => "hold-cash-usd", "account_id" => "acc-1",
+        "name" => "US Dollar", "type" => "cash", "quantity" => 0.005, "value" => 0.005,
+        "security" => { "id" => "sec-cur-usd", "name" => "US Dollar", "ticker" => "CUR:USD", "type" => "cash" }
+      },
+      {
+        "id" => "hold-btc", "account_id" => "acc-1",
+        "name" => "Bitcoin", "type" => "cryptocurrency", "quantity" => 0.05, "value" => 3200.0,
+        "closingPrice" => 64000.0, "closingPriceUpdatedAt" => "2026-09-28",
+        "security" => { "id" => "sec-btc2", "name" => "Bitcoin", "ticker" => "BTC", "type" => "cryptocurrency" }
+      }
+    ]
+
+    import = import_with("accounts" => [ crypto_account ], "holdings" => holdings)
+    assert import.complete?
+
+    account = @family.accounts.find(mapping_for("accounts", "acc-1").record_id)
+    cash_holdings = account.holdings.joins(:security).where(securities: { kind: "cash" })
+    assert_equal 1, cash_holdings.size
+
+    cash = cash_holdings.first
+    assert_equal "cash:acc-1", cash.external_id
+    assert_equal 0.005, cash.amount.to_f
+    assert_equal 0.005, cash.qty.to_f
+    assert_equal 1, cash.price.to_f
+    assert_equal Date.current, cash.date
+
+    # Every contributing Monarch holding id maps to the one cash holding.
+    assert_equal cash, mapping_for("holdings", "hold-cash-usdc").record
+    assert_equal cash, mapping_for("holdings", "hold-cash-usd").record
+    assert_equal 2, MonarchSourceMapping.where(family: @family, collection: "holdings", record: cash).count
+
+    # The report still counts one outcome per archive record.
+    stats = import.report["collections"]["holdings"]
+    assert_equal 3, stats["archive_count"]
+    assert_equal 3, stats["created"]
+
+    # Re-import updates the same holding in place — amount stays 0.005, not doubled.
+    second = import_with("accounts" => [ crypto_account ], "holdings" => holdings)
+    assert second.complete?
+    assert_equal 0.005, cash.reload.amount.to_f
+    assert_equal 1, account.holdings.joins(:security).where(securities: { kind: "cash" }).count
+    assert_equal 3, second.report["collections"]["holdings"]["updated"]
+  end
+
+  test "a rule skipped for unmappable criteria does not break reorder" do
+    rules = [
+      {
+        "id" => "rule-bogus", "order" => 0,
+        "merchantCriteria" => [ { "operator" => "bogus_operator", "value" => "x" } ]
+      },
+      {
+        "id" => "rule-ok", "order" => 1,
+        "merchantCriteria" => [ { "operator" => "contains", "value" => "cafe" } ],
+        "setHideFromReportsAction" => true
+      }
+    ]
+
+    import = import_with("rules" => rules)
+    assert import.complete?
+
+    stats = import.report["collections"]["rules"]
+    assert_equal 2, stats["archive_count"]
+    assert_equal 1, stats["created"]
+    assert_equal 1, stats["skipped"]["no_mappable_criteria"]
+    assert_empty stats["errors"]
+
+    assert_nil mapping_for("rules", "rule-bogus")
+    assert_equal 1, mapping_for("rules", "rule-ok").record.position
+  end
+
+  test "Monarch's real operator spellings (eq/lt) map to Sure conditions" do
+    rules = [
+      {
+        "id" => "rule-eq-lt", "order" => 0,
+        "merchantCriteria" => [ { "operator" => "eq", "value" => "venmo" } ],
+        "amountCriteria" => { "operator" => "lt", "value" => 300, "isExpense" => true },
+        "setHideFromReportsAction" => true
+      }
+    ]
+
+    import = import_with("rules" => rules)
+    assert import.complete?
+
+    rule = mapping_for("rules", "rule-eq-lt").record
+    name = rule.conditions.find_by(condition_type: "transaction_name")
+    assert_equal "=", name.operator
+    assert_equal "venmo", name.value
+    amount = rule.conditions.find_by(condition_type: "transaction_amount")
+    assert_equal "<", amount.operator
+    assert_equal "300", amount.value
+    type = rule.conditions.find_by(condition_type: "transaction_type")
+    assert_equal "=", type.operator
+    assert_equal "expense", type.value
+  end
+
+  test "a holding whose security type is unmapped imports with nil asset_sub_class" do
+    account = {
+      "id" => "acc-401k", "displayName" => "Work 401k",
+      "currentBalance" => 80_000.0, "displayBalance" => 80_000.0, "signedBalance" => 80_000.0,
+      "type" => { "name" => "brokerage" }, "subtype" => { "name" => "st_401k" },
+      "isAsset" => true, "isLiability" => false
+    }
+    holdings = [
+      {
+        "id" => "hold-tdf", "account_id" => "acc-401k",
+        "name" => "TARGETRETIREMENT2065", "type" => "other",
+        "quantity" => 12.5, "value" => 1000.0,
+        "closingPrice" => 80.0, "closingPriceUpdatedAt" => "2026-09-28",
+        "security" => { "id" => "1", "name" => "TARGETRETIREMENT2065", "ticker" => nil, "type" => "other" }
+      }
+    ]
+
+    import = import_with("accounts" => [ account ], "holdings" => holdings)
+    assert import.complete?
+
+    holding = mapping_for("holdings", "hold-tdf").record
+    assert_equal "MONARCH-1", holding.security.ticker
+    assert_nil holding.security.asset_sub_class
+    assert_equal "TARGETRETIREMENT2065", holding.security.name
   end
 
   test "revert removes everything the import created" do

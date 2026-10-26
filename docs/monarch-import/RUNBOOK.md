@@ -168,3 +168,26 @@ record.
   and fold into `cash_balance` rather than counting as invested value.
 - **UI import** (zip upload via the `Import` STI) is not implemented — rake
   only. See the PR "Out of scope" notes.
+
+## 7. Known archive quirks
+
+Found in the first dry run against a real Monarch archive; all handled by the
+importer today:
+
+- **Multiple cash positions per account** — an account can export several
+  `security.type == "cash"` holdings (money-market sweep funds like FDRXX/SPAXX,
+  stablecoins like USDC-USD, the raw `CUR:USD` line). They are summed into one
+  cash holding (`external_id: "cash:<monarch account id>"`, qty = amount = the
+  summed value, price 1, dated at import day); every contributing Monarch
+  holding id still maps to it.
+- **Rules with no mappable criteria** are skipped as
+  `no_mappable_criteria` — e.g. criteria on fields Sure does not carry. They
+  leave no `rules` row and do not break position reordering of the others.
+- **Operator spellings** — real archives use `eq` / `neq` / `ne` / `not_eq`
+  for text and `eq` / `neq` / `ne` / `gt` / `gte` / `lt` / `lte` for amounts,
+  alongside the snake_case/camelCase spellings already mapped. Unknown
+  operators skip that criterion (and the rule if it has none left).
+- **Securities typed `other` / `option` / `derivative`** — e.g. 401(k)
+  target-date funds with no ticker — import with a nil `asset_sub_class` (the
+  only valid value for these types) and a synthetic `MONARCH-<security id>`
+  ticker.
