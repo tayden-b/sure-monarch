@@ -52,7 +52,7 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
-| W3-A VPS deploy kit (`deploy/vps/`, docs/setup/VPS.md, HANDOFF.md rewrite, rehearsal) | [26748c93](https://app.devin.ai/sessions/26748c93dfb6429196e1bea18b6a4614) | TBD | **open** | |
+| W3-A VPS deploy kit (`deploy/vps/`, docs/setup/VPS.md, HANDOFF.md rewrite, rehearsal) | [26748c93](https://app.devin.ai/sessions/26748c93dfb6429196e1bea18b6a4614) | [#20](https://github.com/tayden-b/sure-monarch/pull/20) | **open** | |
 
 ## Integration gate
 
