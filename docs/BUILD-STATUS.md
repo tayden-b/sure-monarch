@@ -64,7 +64,8 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 
 | Task | Session | PR | Status | Merged SHA |
 |---|---|---|---|---|
-| W4-A Attach linked accounts to imported accounts + auto-merge exact overlaps (auto-attach on first sync by mask/payload/institution; manual "Attach to existing" for sync-created shells; `Dedup::AutoMerger` post-sync; `PLAID_HISTORY_DAYS` doc'd in HANDOFF §7) | this session | `work/attach-provider-to-existing` | **open** | — |
+| W4-A Attach linked accounts to imported accounts + auto-merge exact overlaps (auto-attach on first sync by mask/payload/institution; manual "Attach to existing" for sync-created shells; `Dedup::AutoMerger` post-sync; `PLAID_HISTORY_DAYS` doc'd in HANDOFF §7) | [716ae276](https://app.devin.ai/sessions/716ae2760c684ba9a5f7ed848553fd24) | [#26](https://github.com/tayden-b/sure-monarch/pull/26) | **merged** (1 correction round: cross-class reattach guard) | f725fdca |
+| W4-B MCP read-only token scope (`MCP_API_TOKEN_READONLY` env + doorkeeper `read` scope → get_*/list_*/search_* tools only; write tools hidden + uncallable; masked-token list in Settings → MCP) | [d93205bd](https://app.devin.ai/sessions/d93205bdd4dc42bc804c2ba011ed788c) | [#27](https://github.com/tayden-b/sure-monarch/pull/27) | **merged** | 5b870b97 |
 
 ## Open issues / follow-ups reported by workers
 
@@ -142,3 +143,66 @@ Build complete and **live**: https://money.tayden.dev is up, account created,
 onboarding closed, Plaid sandbox keys set, real-archive import run (4
 importer defects found + fixed, #21). Remaining: production Plaid keys + institution links per docs/HANDOFF.md §6–7,
 then re-run `monarch:import` on the real archive with the #21 fixes.
+
+## Final summary — build complete
+
+**Live site:** https://money.tayden.dev (OVH VPS-1, Ubuntu 26.04, Caddy
+auto-HTTPS, nightly `pg_dump` backups at 03:15 + laptop `bin/pull-backup`).
+
+**What shipped** — 26 PRs into `monarch-baseline`, every diff reviewed by the
+orchestrator, CI 7/7 on each merge head:
+
+- **Wave 1 (foundations):** Monarch archive importer with reconciliation +
+  revert + RUNBOOK (#6); Plaid self-host env, 730-day history, sandbox smoke
+  (#4); parity audit (#2); deploy kits for Mac (superseded, #3) and CI (#5).
+- **Wave 2 (Monarch parity):** category groups, account visibility flags +
+  type-first accounts, needs-review queue, aggregate holdings + allocation,
+  mobile transactions UX, recurring polish, cross-source dedup + review UI,
+  rule ordering, merchant spend report + CSV, flex budget (#7–#16).
+- **Follow-ups + gate:** correctness bundle (#17: imported rule positions,
+  cash-holding double-count fix, demo transfer kinds); clean-VM rehearsal of
+  the whole setup with screenshots (#18).
+- **Wave 3 (VPS retarget):** `deploy/vps/` kit — compose + Caddy + ufw +
+  fail2ban + unattended-upgrades, idempotent `bin/setup-vps`, backup/restore/
+  pull-backup/upgrade, systemd units; HANDOFF.md rewritten for the OVH path;
+  rehearsal documented (22.04 — 26.04 delta noted) (#20, fixes #22, #24).
+- **Wave 4 (live data):** real-archive importer fixes (#21, #23 — cash
+  bucketing, rule reorder, operator map, as-of-dated holdings/valuations,
+  deactivated→closed); same-source dedup skip + CI timeout fix (#25);
+  provider attach — linking Plaid/Coinbase/Kraken attaches to the imported
+  account instead of duplicating it, with auto-attach, manual reattach,
+  and post-sync auto-merge of exact overlaps (#26); MCP read-only token
+  scope (#27).
+
+**Verified live:** all 25 real accounts reconcile to Monarch to the cent,
+net worth $365,766 (RSU excluded as in Monarch); Plaid sandbox smoke
+passed; re-import + dedup clean.
+
+**Known limitations / deferred (accepted):**
+
+- Institutions with no provider (Fidelity NetBenefits, pension, Morgan
+  Stanley/EquatePlus, Gemini) stay manual/CSV — no provider exists by design.
+- Importer defers: group-scoped/future budget rows, daily recurring
+  frequency, derived series — documented in RUNBOOK; cosmetic only.
+- UI archive upload deferred — import runs via `bin/rails monarch:import`.
+- `providers:attach` covers Plaid; crypto attach is auto-attach only
+  (institution-name match) — manual crypto reattach has no UI path.
+- Merchant report shows spend-side only; flex donut arc is static.
+- Dedup auto-merge is conservative (exact amount+currency, ≤1 day,
+  name ≥0.8, same account, monarch losers only); looser pairs stay in
+  `/dedup/candidates` for manual review. `auto_merge_duplicates` family
+  flag can disable it.
+- CI `test_unit` timeout raised to 20m — runner setup growth was killing
+  the job mid-suite at 10m.
+
+**How to run upgrades (on the VPS):**
+
+```bash
+cd /opt/sure && git pull && deploy/vps/bin/upgrade   # pulls, rebuilds, migrates, restarts
+deploy/vps/bin/backup                                # manual snapshot; nightly via systemd
+deploy/vps/bin/pull-backup                           # from your laptop clone: fetch latest dump
+```
+
+**Still Tayden-only:** Plaid production Trial keys + dashboard redirect URI
+(`https://money.tayden.dev/accounts`), Coinbase CDP + Kraken API keys, then
+link each institution — docs/HANDOFF.md §6–7.
