@@ -1,0 +1,8 @@
+# Live secrets and local data — never commit
+.env
+data/archive/*
+backups/*
+log/
+
+!data/archive/.gitkeep
+!backups/.gitkeep

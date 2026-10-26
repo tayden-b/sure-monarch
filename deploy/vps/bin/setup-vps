@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/setup-vps — one-command setup for Sure on a public VPS
+#
+#   sudo deploy/vps/bin/setup-vps
+#
+# Run as root on a fresh Ubuntu 24.04 box. Hardens the host (unattended
+# upgrades, ufw, fail2ban, sshd password auth off), installs Docker Engine,
+# creates a non-root `sure` user, clones the repo (monarch-baseline) into
+# $SURE_HOME, generates every secret it can into .env, prompts only for
+# APP_DOMAIN and human-provided keys, builds and starts the compose stack,
+# prepares the database, waits for health, installs the systemd units, then
+# prints your URL and next steps.
+#
+# Re-runnable: existing .env values are never overwritten; apt/ufw/fail2ban/
+# systemd steps are idempotent; the compose stack is just updated/restarted.
+#
+# Env overrides (mainly for rehearsal/automation — defaults suit production):
+#   SURE_HOME=/opt/sure          where the repo lives
+#   SURE_USER=sure               non-root app user
+#   SURE_REPO_URL=...            git URL to clone (default: github repo)
+#   SURE_REPO_BRANCH=...         branch to check out (default: monarch-baseline)
+#   APP_DOMAIN=...               skip the domain prompt (e.g. localhost)
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$KIT_DIR/.env"
+EXAMPLE_FILE="$KIT_DIR/.env.example"
+
+SURE_HOME="${SURE_HOME:-/opt/sure}"
+SURE_USER="${SURE_USER:-sure}"
+REPO_URL="${SURE_REPO_URL:-https://github.com/tayden-b/sure-monarch.git}"
+REPO_BRANCH="${SURE_REPO_BRANCH:-monarch-baseline}"
+
+say()  { printf '%s\n' "$*"; }
+step() { printf '\n==> %s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
+die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,29p' "$0"; exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 0. Sanity checks
+# ---------------------------------------------------------------------------
+[ "$(id -u)" = "0" ] || die "Run as root: sudo deploy/vps/bin/setup-vps"
+. /etc/os-release 2>/dev/null || die "cannot read /etc/os-release"
+[ "${ID:-}" = "ubuntu" ] || warn "this script targets Ubuntu (found ${ID:-unknown}) — continuing anyway"
+command -v apt-get >/dev/null 2>&1 || die "apt-get not found — Debian/Ubuntu only"
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ---------------------------------------------------------------------------
+# 1. Base packages + unattended security upgrades
+# ---------------------------------------------------------------------------
+step "Installing base packages + unattended-upgrades"
+apt-get update -qq
+apt-get install -y -qq ca-certificates curl gnupg git openssl ufw fail2ban unattended-upgrades \
+  >/dev/null
+# Security upgrades happen automatically from now on.
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOF
+say "  unattended-upgrades enabled (security patches apply nightly)"
+
+# ---------------------------------------------------------------------------
+# 2. Docker Engine (official repo) + compose plugin
+# ---------------------------------------------------------------------------
+step "Installing Docker Engine"
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  say "  docker already installed ($(docker --version | awk '{print $3}' | tr -d ,)) — skipping"
+else
+  install -m 0755 -d /etc/apt/keyrings
+  if [ ! -f /etc/apt/keyrings/docker.asc ]; then
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+      -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+  fi
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update -qq
+  apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin >/dev/null
+  say "  docker installed ($(docker --version | awk '{print $3}' | tr -d ,))"
+fi
+docker info >/dev/null 2>&1 || die "docker daemon not running — check: systemctl status docker"
+
+# ---------------------------------------------------------------------------
+# 3. Non-root app user
+# ---------------------------------------------------------------------------
+step "Ensuring '${SURE_USER}' user"
+if id -u "$SURE_USER" >/dev/null 2>&1; then
+  say "  user exists"
+else
+  useradd --create-home --shell /bin/bash --groups docker "$SURE_USER"
+  say "  created ${SURE_USER} (docker group)"
+fi
+usermod -aG docker "$SURE_USER"
+
+# ---------------------------------------------------------------------------
+# 4. Firewall + fail2ban + sshd hardening
+# ---------------------------------------------------------------------------
+step "Configuring ufw (allow 22, 80, 443 — deny everything else)"
+ufw allow 22/tcp  >/dev/null
+ufw allow 80/tcp  >/dev/null
+ufw allow 443/tcp >/dev/null
+# --force: never prompts. Safe to re-run.
+ufw --force enable >/dev/null
+say "  ufw $(ufw status | head -1)"
+
+step "Configuring fail2ban (sshd brute-force jail)"
+mkdir -p /etc/fail2ban/jail.d
+cat > /etc/fail2ban/jail.d/sure-sshd.local <<'EOF'
+[sshd]
+enabled = true
+maxretry = 5
+bantime = 1h
+EOF
+systemctl enable --now fail2ban >/dev/null 2>&1 || warn "fail2ban would not start — check: systemctl status fail2ban"
+say "  fail2ban sshd jail installed"
+
+step "Hardening sshd (PasswordAuthentication no)"
+if [ -d /etc/ssh/sshd_config.d ] && command -v sshd >/dev/null 2>&1; then
+  cat > /etc/ssh/sshd_config.d/60-sure-hardening.conf <<'EOF'
+# Installed by deploy/vps/bin/setup-vps — key-only SSH.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+  if sshd -t 2>/dev/null; then
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    say "  PasswordAuthentication no (sshd_config.d/60-sure-hardening.conf)"
+  else
+    warn "sshd config test failed — left /etc/ssh/sshd_config.d/60-sure-hardening.conf unapplied"
+  fi
+else
+  warn "no sshd found — skipping sshd hardening"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Clone the repo into $SURE_HOME (as $SURE_USER)
+# ---------------------------------------------------------------------------
+step "Fetching the repo → ${SURE_HOME} (branch ${REPO_BRANCH})"
+mkdir -p "$SURE_HOME"
+if [ -d "$SURE_HOME/.git" ]; then
+  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" fetch origin "$REPO_BRANCH" --quiet \
+    || warn "git fetch failed — keeping existing checkout"
+  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" checkout -q "$REPO_BRANCH" \
+    || warn "checkout of ${REPO_BRANCH} failed — keeping current branch"
+  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" pull --ff-only --quiet \
+    || warn "fast-forward pull failed — keeping existing checkout"
+  say "  updated existing clone"
+else
+  chown "$SURE_USER:$SURE_USER" "$SURE_HOME"
+  runuser -u "$SURE_USER" -- \
+    git clone --quiet --branch "$REPO_BRANCH" "$REPO_URL" "$SURE_HOME"
+  say "  cloned ${REPO_URL} (${REPO_BRANCH})"
+fi
+chown -R "$SURE_USER:$SURE_USER" "$SURE_HOME"
+
+# Sanity: the clone must contain this kit (it does on monarch-baseline once
+# this PR lands; a stale clone would leave us configuring nothing).
+[ -f "$SURE_HOME/deploy/vps/docker-compose.yml" ] \
+  || die "${SURE_HOME}/deploy/vps/docker-compose.yml missing — is ${REPO_BRANCH} up to date?"
+
+# ---------------------------------------------------------------------------
+# 6. .env — generated secrets + prompts for human-only values
+# ---------------------------------------------------------------------------
+step "Configuring .env"
+
+ENV_FILE="$SURE_HOME/deploy/vps/.env"
+EXAMPLE_FILE="$SURE_HOME/deploy/vps/.env.example"
+KIT_DIR="$SURE_HOME/deploy/vps"
+
+set_env() {
+  local key="$1" value="$2"
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    sed "s|^${key}=.*|${key}=${value}|" "$ENV_FILE" > "$ENV_FILE.tmp" && mv "$ENV_FILE.tmp" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+get_env() {
+  grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
+fill_secret() {
+  local key="$1"; shift
+  if [ -z "$(get_env "$key")" ]; then
+    set_env "$key" "$("$@")"
+    say "  generated $key"
+  else
+    say "  kept existing $key"
+  fi
+}
+
+if [ ! -f "$ENV_FILE" ]; then
+  cp "$EXAMPLE_FILE" "$ENV_FILE"
+  say "  created .env from .env.example"
+else
+  say "  found existing .env"
+fi
+
+fill_secret SECRET_KEY_BASE openssl rand -hex 64
+fill_secret POSTGRES_PASSWORD openssl rand -hex 24
+fill_secret ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY openssl rand -hex 32
+fill_secret ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY openssl rand -hex 32
+fill_secret ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT openssl rand -hex 32
+
+# APP_DOMAIN — the only required human answer. Env var wins (rehearsal/
+# automation); then prompt; then localhost fallback when there's no TTY.
+APP_DOMAIN="${APP_DOMAIN:-$(get_env APP_DOMAIN)}"
+if [ -z "$APP_DOMAIN" ] && [ -t 0 ]; then
+  printf '\nPublic hostname for HTTPS (DNS A record must point at this VPS).\n'
+  printf 'Examples: money.example.com · a.b.c.d.sslip.io · localhost (self-signed)\n'
+  printf '  APP_DOMAIN: '
+  read -r APP_DOMAIN || APP_DOMAIN=""
+fi
+APP_DOMAIN="${APP_DOMAIN:-localhost}"
+if [ "$APP_DOMAIN" = "localhost" ]; then
+  warn "APP_DOMAIN=localhost — Caddy self-signs via its internal CA (rehearsal mode)."
+  warn "  Set a real hostname in .env for production (Let's Encrypt is automatic)."
+fi
+set_env APP_DOMAIN "$APP_DOMAIN"
+say "  APP_DOMAIN=${APP_DOMAIN}"
+
+# Values derived from the domain — refresh them only while they're blank.
+fill_derived() { # KEY VALUE
+  local key="$1" value="$2"
+  if [ -z "$(get_env "$key")" ]; then
+    set_env "$key" "$value"; say "  derived $key=$value"
+  else
+    say "  kept existing $key"
+  fi
+}
+fill_derived WEBAUTHN_RP_ID "$APP_DOMAIN"
+fill_derived WEBAUTHN_ALLOWED_ORIGINS "https://${APP_DOMAIN}"
+fill_derived PLAID_REDIRECT_URI "https://${APP_DOMAIN}/accounts"
+fill_derived PLAID_WEBHOOK_URL "https://${APP_DOMAIN}/webhooks/plaid"
+
+# Human-provided optional keys (Enter skips — fill .env later instead).
+prompt_opt() {
+  local key="$1" help="$2" current
+  current="$(get_env "$key")"
+  if [ -n "$current" ]; then
+    say "  $key already set — skipping"
+    return
+  fi
+  if [ -t 0 ]; then
+    printf '\n%s\n  docs: %s\n  (blank = skip; you can set it in .env later)\n  %s: ' \
+      "$key" "$help" "$key"
+    local reply
+    read -r reply || reply=""
+    [ -n "$reply" ] && set_env "$key" "$reply"
+  fi
+}
+
+step "Optional external accounts (press Enter to skip any)"
+prompt_opt OPENAI_ACCESS_TOKEN "https://platform.openai.com/api-keys (enables AI chat/categorize; costs money)"
+prompt_opt TWELVE_DATA_API_KEY "https://twelvedata.com → API Key (or leave blank for free Yahoo Finance quotes)"
+prompt_opt PLAID_CLIENT_ID "https://dashboard.plaid.com/developers/keys — use Sandbox keys first"
+if [ -n "$(get_env PLAID_CLIENT_ID)" ]; then
+  prompt_opt PLAID_SECRET "https://dashboard.plaid.com/developers/keys — secret for PLAID_ENV=$(get_env PLAID_ENV)"
+  if [ -t 0 ]; then
+    printf '\nPLAID_ENV (sandbox | development | production) [sandbox]: '
+    read -r _plaid_env || _plaid_env=""
+    [ -n "$_plaid_env" ] && set_env PLAID_ENV "$_plaid_env"
+  fi
+else
+  say "  PLAID_CLIENT_ID blank — skipping PLAID_SECRET/PLAID_ENV"
+fi
+
+chown "$SURE_USER:$SURE_USER" "$ENV_FILE"
+
+# ---------------------------------------------------------------------------
+# 7. Build + start the stack (as $SURE_USER, in the docker group)
+# ---------------------------------------------------------------------------
+compose() { runuser -u "$SURE_USER" -- docker compose --project-directory "$KIT_DIR" "$@"; }
+
+step "Building the app image (first run can take 10–20 min)"
+compose build
+
+step "Starting the stack"
+compose up -d
+
+# ---------------------------------------------------------------------------
+# 8. Wait for health — BEFORE running our own db:prepare below. The web
+# entrypoint already runs `bin/rails db:prepare` before Puma boots, so a
+# healthy /up means that first prepare has finished. Running a second
+# db:prepare while it is still loading the schema races it and dies with
+# PG::DuplicateObject (same bug found in the Mac kit rehearsal).
+# ---------------------------------------------------------------------------
+step "Waiting for web /up (inside the container — no DNS needed)"
+healthy=0
+for _ in $(seq 1 90); do
+  if compose exec -T web curl -fsS http://localhost:3000/up >/dev/null 2>&1; then
+    healthy=1; break
+  fi
+  sleep 2
+done
+[ "$healthy" = "1" ] || die "App did not become healthy. Check: docker compose logs web"
+say "  /up healthy"
+
+step "Preparing the database"
+# Safe now that /up is healthy: entrypoint prepare already finished; this is a
+# no-op on fresh boots and applies pending migrations on re-runs.
+compose exec -T web bin/rails db:prepare
+
+# ---------------------------------------------------------------------------
+# 9. systemd units — stack on boot + nightly backup
+# ---------------------------------------------------------------------------
+step "Installing systemd units (boot start + nightly backup)"
+if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+  for unit in sure.service sure-backup.service sure-backup.timer; do
+    sed -e "s|@KIT_DIR@|$KIT_DIR|g" -e "s|@SURE_USER@|$SURE_USER|g" \
+      "$KIT_DIR/systemd/$unit" > "/etc/systemd/system/$unit"
+  done
+  systemctl daemon-reload
+  systemctl enable --now sure.service >/dev/null 2>&1 || warn "sure.service failed to enable"
+  systemctl enable --now sure-backup.timer >/dev/null 2>&1 || warn "sure-backup.timer failed to enable"
+  say "  sure.service + sure-backup.timer enabled"
+else
+  warn "systemd not running — units not installed. Install them by hand:"
+  warn "  sed 's|@KIT_DIR@|$KIT_DIR|g; s|@SURE_USER@|$SURE_USER|g' systemd/*.service systemd/*.timer"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. Report
+# ---------------------------------------------------------------------------
+step "Done"
+if [ "$APP_DOMAIN" = "localhost" ]; then
+  say "  Site:   https://localhost  (self-signed — accept the browser warning)"
+else
+  say "  Site:   https://${APP_DOMAIN}"
+fi
+say "  Repo:   ${SURE_HOME}  ·  kit:  ${KIT_DIR}"
+say ""
+say "Next steps:"
+say "  1. Open the site and create your account (first user = admin)."
+say "  2. Lock the door: set ONBOARDING_STATE=closed in ${ENV_FILE},"
+say "     then: cd ${KIT_DIR} && docker compose up -d"
+say "  3. Turn on 2FA: Settings → Security → Multi-factor authentication."
+say "  4. Copy the Monarch export into ${KIT_DIR}/data/archive/ then:"
+say "       docker compose exec -T web bin/rails \"monarch:import[/archive,dry_run]\""
+say "       docker compose exec -T web bin/rails \"monarch:import[/archive]\""
+say "       docker compose exec -T web bin/rails monarch:dedup"
+say ""
+say "Handy commands (run as ${SURE_USER} or root from ${KIT_DIR}):"
+say "  docker compose ps            # status"
+say "  docker compose logs -f web   # app logs"
+say "  ./bin/backup                 # pg_dump → ./backups (systemd does it nightly too)"
+say "  ./bin/upgrade                # git pull + rebuild + restart"
+say "  systemctl list-timers        # backup timer schedule"

@@ -1,0 +1,34 @@
+# ===========================================================================
+# Caddyfile.internal — rehearsal/self-signed variant
+# ===========================================================================
+# Identical to Caddyfile plus `tls internal`: Caddy signs the site cert with
+# its own CA instead of asking Let's Encrypt. Browsers will warn — that's the
+# point (it proves the full TLS proxy path works without public DNS).
+#
+# Use it by setting CADDYFILE=./Caddyfile.internal in .env, for rehearsing on
+# a fake NON-localhost hostname (e.g. sure.test in /etc/hosts). For
+# APP_DOMAIN=localhost you don't need this file at all — plain Caddyfile
+# already uses the internal CA for localhost.
+# ===========================================================================
+
+{$APP_DOMAIN} {
+	tls internal
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

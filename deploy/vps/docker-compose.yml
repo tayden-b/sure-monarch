@@ -1,0 +1,214 @@
+# ===========================================================================
+# Sure on a public VPS — production compose stack
+# ===========================================================================
+#
+# What this runs:
+#   caddy   reverse proxy + automatic HTTPS (Let's Encrypt) — the ONLY
+#           service that publishes host ports (80/443)
+#   web     Rails app (Puma) on container port 3000, internal only
+#   worker  Sidekiq background jobs (syncs, imports, recurring txns)
+#   db      PostgreSQL 16, persistent named volume — internal only
+#   redis   Redis, persistent named volume — internal only
+#
+# Usage (from this directory):
+#   cp .env.example .env        # or let bin/setup-vps do it for you
+#   docker compose build        # builds from the repo Dockerfile
+#   docker compose up -d
+#
+# The Monarch archive mount: ./data/archive is mounted read-only at /archive
+# inside web and worker. Copy Tayden's Monarch export folder there and the
+# importer can read it without copying it into the image.
+#
+# ./backups holds pg_dump output written by bin/backup (host-side).
+# ===========================================================================
+
+x-db-env: &db_env
+  POSTGRES_USER: ${POSTGRES_USER:-sure}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (bin/setup-vps generates one)}
+  POSTGRES_DB: ${POSTGRES_DB:-sure_production}
+
+x-app-env: &app_env
+  <<: *db_env
+  # --- required ---
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env (bin/setup-vps generates one)}
+  SELF_HOSTED: "true"
+  ONBOARDING_STATE: ${ONBOARDING_STATE:-open}
+  DB_HOST: db
+  DB_PORT: "5432"
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+  # Caddy terminates real TLS in front of the app, so Rails must generate
+  # https:// URLs and mark cookies Secure even though Puma itself sees HTTP.
+  RAILS_FORCE_SSL: ${RAILS_FORCE_SSL:-true}
+  RAILS_ASSUME_SSL: ${RAILS_ASSUME_SSL:-true}
+  APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env (e.g. money.example.com)}
+  APP_HOST: ${APP_HOST:-}
+  # --- Active Record encryption (optional; derived from SECRET_KEY_BASE when unset) ---
+  ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: ${ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY:-}
+  ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: ${ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY:-}
+  ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT:-}
+  # --- WebAuthn / passkeys (optional) ---
+  WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+  WEBAUTHN_ALLOWED_ORIGINS: ${WEBAUTHN_ALLOWED_ORIGINS:-}
+  # --- AI features (optional; empty = off) ---
+  OPENAI_ACCESS_TOKEN: ${OPENAI_ACCESS_TOKEN:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  OPENAI_URI_BASE: ${OPENAI_URI_BASE:-}
+  OPENAI_REQUEST_TIMEOUT: ${OPENAI_REQUEST_TIMEOUT:-60}
+  AI_RESPONSE_TIMEOUT: ${AI_RESPONSE_TIMEOUT:-90}
+  JEV_API_KEY: ${JEV_API_KEY:-}
+  CATEGORIZATION_PROVIDER: ${CATEGORIZATION_PROVIDER:-}
+  JEV_ENDPOINT: ${JEV_ENDPOINT:-}
+  JEV_MODEL: ${JEV_MODEL:-}
+  # --- Market data (optional) ---
+  TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+  EXCHANGE_RATE_PROVIDER: ${EXCHANGE_RATE_PROVIDER:-yahoo_finance}
+  SECURITIES_PROVIDER: ${SECURITIES_PROVIDER:-yahoo_finance}
+  BRAND_FETCH_CLIENT_ID: ${BRAND_FETCH_CLIENT_ID:-}
+  # --- Plaid (optional; configure in Settings → Providers or via these) ---
+  PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+  PLAID_SECRET: ${PLAID_SECRET:-}
+  PLAID_ENV: ${PLAID_ENV:-sandbox}
+  PLAID_INCLUDE_PENDING: ${PLAID_INCLUDE_PENDING:-1}
+  PLAID_HISTORY_DAYS: ${PLAID_HISTORY_DAYS:-}
+  PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+  PLAID_WEBHOOK_URL: ${PLAID_WEBHOOK_URL:-}
+  PLAID_EU_WEBHOOK_URL: ${PLAID_EU_WEBHOOK_URL:-}
+  # --- Email (optional; empty = password reset emails disabled) ---
+  SMTP_ADDRESS: ${SMTP_ADDRESS:-}
+  SMTP_PORT: ${SMTP_PORT:-465}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_TLS_ENABLED: ${SMTP_TLS_ENABLED:-true}
+  SMTP_TLS_SKIP_VERIFY: ${SMTP_TLS_SKIP_VERIFY:-false}
+  EMAIL_SENDER: ${EMAIL_SENDER:-}
+  # --- Sidekiq web UI extra auth (optional) ---
+  SIDEKIQ_WEB_USERNAME: ${SIDEKIQ_WEB_USERNAME:-}
+  SIDEKIQ_WEB_PASSWORD: ${SIDEKIQ_WEB_PASSWORD:-}
+  # --- Monarch import ---
+  # Fixed path where ./data/archive is mounted; the Monarch importer reads from here.
+  MONARCH_ARCHIVE_PATH: ${MONARCH_ARCHIVE_PATH:-/archive}
+  # 1 = every imported transaction is queued in the needs-review inbox
+  IMPORT_AUTO_FLAG_NEEDS_REVIEW: ${IMPORT_AUTO_FLAG_NEEDS_REVIEW:-1}
+
+x-app-common: &app_common
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  image: sure-monarch:local
+  pull_policy: build
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    <<: *app_env
+  volumes:
+    - app-storage:/rails/storage
+    - ./data/archive:/archive:ro
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - sure_net
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env (e.g. money.example.com)}
+    # The ONLY published ports on the host. Everything else stays internal.
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      # CADDYFILE selects the config: ./Caddyfile (default, automatic TLS) or
+      # ./Caddyfile.internal (tls internal for non-localhost rehearsal).
+      - ${CADDYFILE:-./Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      # Admin API on localhost:2019 is a reliable liveness signal.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      web:
+        condition: service_started
+    networks:
+      - sure_net
+
+  web:
+    <<: *app_common
+    environment:
+      <<: *app_env
+      # Puma binds inside the container only; Caddy reaches it as web:3000.
+      PORT: "3000"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/up || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  worker:
+    <<: *app_common
+    command: bundle exec sidekiq
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'sidekiq' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      <<: *db_env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Also reachable as /backups inside the container; bin/backup writes
+      # dumps here from the host side either way.
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sure_net
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sure_net
+
+volumes:
+  app-storage:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  sure_net:
+    driver: bridge

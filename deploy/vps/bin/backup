@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/backup — timestamped Postgres backup to ./backups/ (keeps last 14)
+#
+#   ./bin/backup                 # database only
+#   ./bin/backup --with-storage  # also tar the uploaded-files volume
+#
+# Run on the VPS from deploy/vps/ (as the `sure` user or root — both can
+# reach docker). The systemd timer sure-backup.timer runs this nightly.
+# Pull a copy to your laptop with ./bin/pull-backup.
+#
+# Restore with ./bin/restore <file.dump>
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$KIT_DIR"
+mkdir -p backups
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,14p' "$0"; exit 0
+fi
+
+ENV_FILE="$KIT_DIR/.env"
+get_env() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+PG_USER="$(get_env POSTGRES_USER)";  PG_USER="${PG_USER:-sure}"
+PG_DB="$(get_env POSTGRES_DB)";      PG_DB="${PG_DB:-sure_production}"
+KEEP=14
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT="backups/sure-${STAMP}.dump"
+
+echo "==> Dumping ${PG_DB} to ${OUT}"
+docker compose exec -T db pg_dump -U "$PG_USER" -Fc "$PG_DB" > "$OUT"
+
+# Refuse to keep an empty/failed dump
+if [ ! -s "$OUT" ]; then
+  rm -f "$OUT"
+  echo "error: pg_dump produced no output — is the db container up?" >&2
+  exit 1
+fi
+echo "    $(du -h "$OUT" | cut -f1) written"
+
+if [ "${1:-}" = "--with-storage" ]; then
+  SOUT="backups/storage-${STAMP}.tar.gz"
+  echo "==> Archiving app-storage volume to ${SOUT}"
+  docker compose run --rm --no-deps -T web \
+    tar -czf - -C /rails/storage . > "$SOUT" \
+    || { rm -f "$SOUT"; echo "error: storage archive failed" >&2; exit 1; }
+  echo "    $(du -h "$SOUT" | cut -f1) written"
+fi
+
+echo "==> Pruning to last ${KEEP} backups"
+ls -1t backups/sure-*.dump 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r f; do
+  rm -f "$f"; echo "    removed $f"
+done
+ls -1t backups/storage-*.tar.gz 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r f; do
+  rm -f "$f"; echo "    removed $f"
+done
+
+echo "==> Done: ${OUT}"
+echo "    (copy it off-box with: ./bin/pull-backup from your laptop)"

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/restore — restore a ./bin/backup dump into the running stack
+#
+#   ./bin/restore                        # restore the newest dump in ./backups/
+#   ./bin/restore backups/sure-XXX.dump  # restore a specific dump
+#
+# This DESTROYS the current database contents and replaces them with the
+# dump. The web/worker services are stopped during the restore.
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$KIT_DIR"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,11p' "$0"; exit 0
+fi
+
+ENV_FILE="$KIT_DIR/.env"
+get_env() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+PG_USER="$(get_env POSTGRES_USER)";  PG_USER="${PG_USER:-sure}"
+PG_DB="$(get_env POSTGRES_DB)";      PG_DB="${PG_DB:-sure_production}"
+DOMAIN="$(get_env APP_DOMAIN)";      DOMAIN="${DOMAIN:-localhost}"
+
+DUMP="${1:-}"
+if [ -z "$DUMP" ]; then
+  DUMP="$(ls -1t backups/sure-*.dump 2>/dev/null | head -1 || true)"
+  [ -n "$DUMP" ] || { echo "error: no dumps found in ./backups/" >&2; exit 1; }
+fi
+[ -f "$DUMP" ] || { echo "error: dump not found: $DUMP" >&2; exit 1; }
+
+echo "This will REPLACE the contents of database '${PG_DB}' with:"
+echo "  $DUMP"
+if [ -t 0 ]; then
+  printf 'Type "restore" to continue: '
+  read -r reply
+  [ "$reply" = "restore" ] || { echo "aborted."; exit 1; }
+fi
+
+echo "==> Stopping web + worker"
+docker compose stop web worker
+
+echo "==> Restoring ${DUMP}"
+docker compose exec -T db pg_restore \
+  -U "$PG_USER" -d "$PG_DB" \
+  --clean --if-exists --no-owner --no-privileges < "$DUMP"
+
+echo "==> Restarting web + worker"
+docker compose start web worker
+
+echo "==> Done. Verify at https://${DOMAIN}"

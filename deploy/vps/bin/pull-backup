@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/pull-backup — pull the newest DB dump off the VPS to your laptop
+#
+# Run this FROM your laptop (not on the VPS):
+#
+#   ./bin/pull-backup sure@<vps-ip-or-host>                 # → ./backups-pulled/
+#   ./bin/pull-backup sure@<vps> /opt/sure/deploy/vps ~/sure-backups
+#
+#   $1  ssh target (required)          user@host your SSH key logs in as
+#   $2  remote kit dir (optional)      default /opt/sure/deploy/vps
+#   $3  local dir (optional)           default ./backups-pulled (created)
+#
+# Copies the newest backups/sure-*.dump from the remote kit dir into the
+# local dir. Off-box copies of nightly backups are what make the VPS
+# replaceable — run this after any import/link milestone (or weekly via cron).
+# ===========================================================================
+set -euo pipefail
+
+case "${1:-}" in
+  -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+  "") sed -n '2,17p' "$0"; echo "error: ssh target required (e.g. sure@<vps-ip>)" >&2; exit 1 ;;
+esac
+
+TARGET="$1"
+REMOTE_DIR="${2:-/opt/sure/deploy/vps}"
+LOCAL_DIR="${3:-./backups-pulled}"
+mkdir -p "$LOCAL_DIR"
+
+echo "==> Finding newest dump on ${TARGET}:${REMOTE_DIR}/backups"
+REMOTE_DUMP="$(ssh "$TARGET" "ls -1t '$REMOTE_DIR'/backups/sure-*.dump 2>/dev/null | head -1" || true)"
+[ -n "$REMOTE_DUMP" ] || { echo "error: no dumps found in ${REMOTE_DIR}/backups — run bin/backup on the VPS first" >&2; exit 1; }
+echo "    $REMOTE_DUMP"
+
+echo "==> scp → ${LOCAL_DIR}/"
+scp "$TARGET:$REMOTE_DUMP" "$LOCAL_DIR/"
+
+echo "==> Done: ${LOCAL_DIR}/$(basename "$REMOTE_DUMP")"
