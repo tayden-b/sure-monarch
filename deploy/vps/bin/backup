@@ -51,12 +51,15 @@ if [ "${1:-}" = "--with-storage" ]; then
 fi
 
 echo "==> Pruning to last ${KEEP} backups"
-ls -1t backups/sure-*.dump 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r f; do
-  rm -f "$f"; echo "    removed $f"
-done
-ls -1t backups/storage-*.tar.gz 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r f; do
-  rm -f "$f"; echo "    removed $f"
-done
+prune() {  # prune <glob> — keep newest $KEEP matches, remove the rest
+  local pat="$1" f
+  compgen -G "$pat" >/dev/null 2>&1 || return 0
+  ls -1t $pat | tail -n "+$((KEEP + 1))" | while read -r f; do
+    rm -f "$f"; echo "    removed $f"
+  done
+}
+prune "backups/sure-*.dump"
+prune "backups/storage-*.tar.gz"
 
 echo "==> Done: ${OUT}"
 echo "    (copy it off-box with: ./bin/pull-backup from your laptop)"
