@@ -77,6 +77,10 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 - Pre-existing test-env failures on baseline (eval/langfuse, simplefin ×3,
   hostings ×2, PG advisory-lock flake) reproduce without any changes — not
   caused by this build; workers must keep reporting them as baseline failures.
+- First real-archive dry run (on the VPS) surfaced 4 importer defects —
+  multi-cash holdings, rule reorder after a skipped rule, real operator
+  spellings (eq/lt/gt…), unmapped security types — fixed on
+  `work/importer-realdata-fixes`; quirks documented in RUNBOOK §7.
 
 ## What Tayden must do by hand (running list)
 
