@@ -88,6 +88,36 @@ class AccountProvider::ReattachTest < ActiveSupport::TestCase
     assert_equal "active", @shell.reload.status
   end
 
+  test "call refuses when the provider feed's accountable class differs from the target" do
+    @plaid_account.update!(plaid_type: "credit", plaid_subtype: "credit card")
+
+    error = assert_raises(AccountProvider::Reattach::Error) do
+      AccountProvider::Reattach.new(account_provider: @link, target_account: @target).call
+    end
+    assert_match(/Cannot attach a PlaidAccount feed to a Depository account/, error.message)
+
+    # Nothing moved — the depository shell survives to be reattachable later
+    assert_equal @shell, @link.reload.account
+    assert_equal "active", @shell.reload.status
+  end
+
+  test "call allows a depository feed onto a depository target" do
+    AccountProvider::Reattach.new(account_provider: @link, target_account: @target).call
+
+    assert_equal @target, @link.reload.account
+  end
+
+  test "call refuses a kraken feed onto a depository target" do
+    crypto_shell = @family.accounts.create!(
+      name: "Kraken Shell", accountable: Crypto.new, balance: 0, currency: "USD"
+    )
+    link = AccountProvider.create!(account: crypto_shell, provider: kraken_accounts(:one), provider_type: "KrakenAccount")
+
+    assert_raises(AccountProvider::Reattach::Error) do
+      AccountProvider::Reattach.new(account_provider: link, target_account: @target).call
+    end
+  end
+
   test "call refuses a target in another family" do
     foreign = families(:empty).accounts.create!(
       name: "Foreign", accountable: Depository.new, balance: 0, currency: "USD"

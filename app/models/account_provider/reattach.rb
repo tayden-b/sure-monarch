@@ -49,6 +49,22 @@ class AccountProvider::Reattach
     account_provider.provider_type.demodulize.underscore.delete_suffix("_account")
   end
 
+  # The accountable class the feed implies — nil when we can't infer one, so
+  # unknown provider kinds skip the class check. A wrong-class attach would
+  # misclassify the target permanently (a credit feed on a depository flips
+  # liability-vs-asset, hence the balance sign) and can't be undone: after
+  # the move the source carries non-provider data and is never reattachable.
+  def self.expected_accountable_class(provider)
+    case provider
+    when PlaidAccount
+      PlaidAccount::TypeMappable.accountable_class(provider.plaid_type)
+    when CoinbaseAccount, KrakenAccount
+      Crypto
+    end
+  rescue PlaidAccount::TypeMappable::UnknownAccountTypeError
+    nil
+  end
+
   def reattachable?
     self.class.reattachable?(account_provider)
   end
@@ -84,6 +100,11 @@ class AccountProvider::Reattach
 
       if target_account.account_providers.exists?(provider_type: account_provider.provider_type)
         raise Error, "Target account already has a #{account_provider.provider_type} provider link"
+      end
+
+      expected_class = self.class.expected_accountable_class(account_provider.provider)
+      if expected_class && target_account.accountable.class != expected_class
+        raise Error, "Cannot attach a #{account_provider.provider_type} feed to a #{target_account.accountable.class} account"
       end
     end
 
