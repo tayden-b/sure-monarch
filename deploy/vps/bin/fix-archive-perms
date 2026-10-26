@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# bin/fix-archive-perms — hand ./data/archive (+ ./backups) the right owners
+#
+#   sudo deploy/vps/bin/fix-archive-perms
+#
+# web/worker run as uid 1000 (repo Dockerfile `USER 1000:1000`, user `rails`)
+# and bind-mount ./data/archive read-only at /archive. Files scp'd/copied in
+# as `sure`, `ubuntu` or root land with the wrong owner and the importer gets
+# "Permission denied" on /archive/import. Run this after copying the Monarch
+# export in — or any time /archive perms look wrong. Idempotent.
+# ===========================================================================
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,15p' "$0"; exit 0
+fi
+
+[ "$(id -u)" = "0" ] || { echo "error: run as root: sudo $0" >&2; exit 1; }
+
+# App uid/gid, detected from the built image; fallback matches the Dockerfile.
+APP_UID=1000; APP_GID=1000
+img_user="$(docker image inspect sure-monarch:local --format '{{.Config.User}}' 2>/dev/null || true)"
+if [ -n "$img_user" ]; then
+  APP_UID="${img_user%%:*}"
+  APP_GID="${img_user#*:}"
+fi
+
+# Archive contents only need to be readable by the app uid (the mount is :ro).
+mkdir -p "$KIT_DIR/data/archive" "$KIT_DIR/backups"
+chown -R "$APP_UID:$APP_GID" "$KIT_DIR/data/archive"
+chmod -R u+rX "$KIT_DIR/data/archive"
+chmod 750 "$KIT_DIR/data/archive"
+
+# bin/backup writes dumps host-side as the service user, so backups/ stays
+# service-owned (sure by default); override with SURE_USER if you renamed it.
+SURE_USER="${SURE_USER:-sure}"
+chown -R "$SURE_USER:$SURE_USER" "$KIT_DIR/backups" 2>/dev/null \
+  || chown -R "$APP_UID:$APP_GID" "$KIT_DIR/backups"
+chmod 750 "$KIT_DIR/backups"
+
+echo "done: data/archive → uid ${APP_UID}:${APP_GID} (u+rX, top 750); backups → ${SURE_USER} (750)"
