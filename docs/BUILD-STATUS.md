@@ -50,7 +50,7 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 
 ## Integration gate
 
-In progress — dispatched after W2-F merged. One worker rehearses the full setup on a clean VM —
+**COMPLETE** — [#18](https://github.com/tayden-b/sure-monarch/pull/18) merged (`6361dd98`). One worker rehearsed the full setup on a clean VM —
 deploy kit, synthetic archive import + reconciliation counts, every parity
 surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 
@@ -85,7 +85,6 @@ A consolidated ordered checklist lands in docs/HANDOFF.md at the end of the buil
 
 ## What's next
 
-1. Review/merge Wave-2 batch-1 PRs as they land (T1, T9, T2, T5, T8, T10).
-2. Dispatch Wave-2 batch-2 (T3 dedup, T4 rule ordering, T6 merchant report, T7 flex budget) as dependencies land.
-3. Integration-gate rehearsal worker.
-4. docs/HANDOFF.md + final report to Tayden.
+Build complete. Tayden runs `docs/HANDOFF.md` on his Mac (≈35–50 min active).
+Remaining deferrals are documented in "Open issues" above: Plaid keys,
+Tailscale on the real Mac, his real archive, and accepted importer defers.
