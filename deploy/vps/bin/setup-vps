@@ -146,18 +146,21 @@ fi
 # ---------------------------------------------------------------------------
 step "Fetching the repo → ${SURE_HOME} (branch ${REPO_BRANCH})"
 mkdir -p "$SURE_HOME"
+# runuser -l gives a login shell: HOME=$SURE_USER's home and a cwd the user
+# can actually read (root's cwd — e.g. /root — is inaccessible to $SURE_USER
+# and makes tools that stat "." like `docker compose` fail).
 if [ -d "$SURE_HOME/.git" ]; then
-  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" fetch origin "$REPO_BRANCH" --quiet \
+  runuser -l "$SURE_USER" -c "git -C '$SURE_HOME' fetch origin '$REPO_BRANCH' --quiet" \
     || warn "git fetch failed — keeping existing checkout"
-  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" checkout -q "$REPO_BRANCH" \
+  runuser -l "$SURE_USER" -c "git -C '$SURE_HOME' checkout -q '$REPO_BRANCH'" \
     || warn "checkout of ${REPO_BRANCH} failed — keeping current branch"
-  runuser -u "$SURE_USER" -- git -C "$SURE_HOME" pull --ff-only --quiet \
+  runuser -l "$SURE_USER" -c "git -C '$SURE_HOME' pull --ff-only --quiet" \
     || warn "fast-forward pull failed — keeping existing checkout"
   say "  updated existing clone"
 else
   chown "$SURE_USER:$SURE_USER" "$SURE_HOME"
-  runuser -u "$SURE_USER" -- \
-    git clone --quiet --branch "$REPO_BRANCH" "$REPO_URL" "$SURE_HOME"
+  runuser -l "$SURE_USER" -c \
+    "git clone --quiet --branch '$REPO_BRANCH' '$REPO_URL' '$SURE_HOME'"
   say "  cloned ${REPO_URL} (${REPO_BRANCH})"
 fi
 chown -R "$SURE_USER:$SURE_USER" "$SURE_HOME"
@@ -280,7 +283,7 @@ chown "$SURE_USER:$SURE_USER" "$ENV_FILE"
 # ---------------------------------------------------------------------------
 # 7. Build + start the stack (as $SURE_USER, in the docker group)
 # ---------------------------------------------------------------------------
-compose() { runuser -u "$SURE_USER" -- docker compose --project-directory "$KIT_DIR" "$@"; }
+compose() { runuser -l "$SURE_USER" -c "cd '$KIT_DIR' && docker compose $*"; }
 
 step "Building the app image (first run can take 10–20 min)"
 compose build
