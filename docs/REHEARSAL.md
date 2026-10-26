@@ -283,3 +283,81 @@ rolls back all DB writes. Nothing was stubbed.
 - `VALIDATION.json` in the fixture claims 11 accounts; `accounts.json` actually
   has 12 — the report/VALIDATION text is stale (worth a doc-only cleanup in a
   follow-up).
+
+---
+
+# Part 2 — VPS deploy rehearsal (`deploy/vps/`)
+
+**2026-10-26** — same full loop re-rehearsed against the new **public VPS kit**
+(`deploy/vps/`, replacing the Mac/Tailscale target). Environment: this session's
+Devin VM (Ubuntu **22.04** — the spec target is Ubuntu **26.04 LTS**; delta
+below), systemd live, Docker 29.7.2 + compose plugin, self-signed Caddy cert
+(`CADDYFILE=Caddyfile.internal`, `APP_DOMAIN=localhost`) since no public DNS
+exists here.
+
+## 26.04 delta (documented assumption)
+
+The kit never hardcodes a distro version: `setup-vps` reads `/etc/os-release`
+and probes `download.docker.com/linux/ubuntu/dists/<codename>` for the Docker
+repo, falling back to `noble` only if yours isn't published. Verified from this
+VM: Docker already ships a `resolute` (26.04) repo, so the probe resolves the
+real repo on Tayden's box — the fallback is only insurance. Everything else in
+setup (apt, ufw, fail2ban, sshd, systemd units) is release-agnostic. Rehearsed
+on 22.04 because it's what this VM runs; no 24.04- or 26.04-specific code paths
+exist to exercise.
+
+## What ran
+
+- `sudo -E env SURE_REPO_URL=/tmp/sure-mirror SURE_REPO_BRANCH=work/vps-deploy
+  APP_DOMAIN=localhost CADDYFILE=Caddyfile.internal /tmp/sure-mirror/deploy/vps/bin/setup-vps`
+  — full clean run ×3 (idempotent; run 3 was a no-op pass): apt +
+  unattended-upgrades, `sure` user (docker group, root's ssh keys mirrored),
+  Docker + compose plugin, ufw 22/80/443, fail2ban sshd jail, sshd
+  `PasswordAuthentication no`, repo → `/opt/sure` as `sure`, `.env` generated
+  (all secrets random; only APP_DOMAIN/Plaid prompted), `docker compose up -d`,
+  `db:prepare`, `/up` poll → **200**, final `==> Done` block.
+- Stack health: all 5 containers `(healthy)`; `https://localhost/up` → 200;
+  `http://localhost/` → **308 → https**; `https://localhost/healthz` → `ok`.
+- Signup + onboarding → dashboard; `ONBOARDING_STATE=closed` → signup page
+  stops offering registration; TOTP enrollment screen at Settings → Security.
+- `monarch:import[/archive,dry_run]` then `[/archive]` — dry-run counts identical
+  to real-run; every collection reconciles to archive row counts, all balance
+  diffs **0.00**. Net Worth **$173,579.75**; all 12 accounts match the archive
+  `signedBalance` exactly (Coinbase 3200 · Emergency 12000 · Checking 5230.50 ·
+  HSA 4100 · Joint 200 · Pension 21000 · Card 1450.75 · Roth 9000 · Side 500 ·
+  Brokerage 25000 · IRA 15000 · 401k 80000); 8 txns, income $2,450 / expenses
+  $477.31, "Needs review (1)" chip populated.
+- `monarch:dedup` → 0 pairs on the synthetic set (expected — single-source).
+- `plaid:sandbox_smoke` → exits **0** with the skip message (no `PLAID_*` keys
+  on the box) — same documented residual as the Mac pass.
+- `./bin/backup` → `backups/sure-*.dump`; prune verified (keeps newest 14,
+  no-op on missing glob — see fixes).
+- `./bin/restore` (deleted 3 txns → restore → 8 back): clean round-trip.
+- `./bin/pull-backup sure@localhost` from laptop-side: scp'd newest dump (512K).
+- `./bin/upgrade` (as root): re-execs as `sure`, backup → pull → build →
+  `up -d` → `/up` 200 → `db:prepare`; printed `Upgraded to 27e637bb`.
+- systemd: `sure.service` enabled (compose up on boot), `sure-backup.timer`
+  armed for nightly 03:15, one-shot `sure-backup.service` run → SUCCESS.
+- Browser pass at desktop **and** mobile widths (390×844 iPhone emulation):
+  `docs/rehearsal/vps/` — `d-onboarding`, `d-dashboard` (empty + populated),
+  `d-accounts`, `d-transactions`, `m-dashboard`, `m-transactions`.
+
+## What broke → fixed (this run)
+
+| Bug | Fix (commit) |
+|---|---|
+| `runuser -u` inherited root's unreadable cwd → compose/git ops `stat .: permission denied` | login-shell `runuser -l ... -c "cd $KIT_DIR && ..."` (`6db426c5`) |
+| First-run `apt-get` raced `unattended-upgr` for the dpkg lock | `wait_for_apt_lock()` before apt blocks (`278bf578`) |
+| Caddy container `unhealthy` — healthcheck hit `localhost:2019` but admin API binds IPv4 only | `127.0.0.1:2019` (`9afb8a4d`) |
+| `ssh sure@host` (pull-backup path) denied — `sure` had no keys | setup mirrors root's `authorized_keys` into `~sure` (`dbc45cd6`) |
+| `sure-backup.service` exited 2 after prune when a glob had no matches (pipefail) | `compgen -G`-guarded `prune()` in `bin/backup` (`5d97f57a`) |
+| `bin/upgrade` as root → git "dubious ownership" on sure-owned repo | re-exec via `runuser -l sure` (`27e637bb`) |
+
+## Residual / known notes
+
+- `money.tayden.dev` DNS + OVH box: rehearsable pieces all pass; the real A
+  record + LE issuance happen on Tayden's box (documented in HANDOFF step 2,
+  incl. sslip.io fallback + rate-limit caveat).
+- Plaid: needs his dashboard keys (same as Part 1).
+- Coinbase/Kraken are **provider items** (Settings → Providers), not env keys —
+  HANDOFF step 7 routes them correctly.

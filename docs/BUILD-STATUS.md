@@ -9,7 +9,7 @@ where the build stands — updated by the orchestrator after every merge.
 
 | Decision | Call | Why |
 |---|---|---|
-| Hosting | Tayden's Mac (Apple Silicon), Docker Desktop + Tailscale | Serve for tailnet HTTPS; Funnel only for Plaid redirect/webhook paths |
+| Hosting | ~~Tayden's Mac~~ → **public VPS** (OVH VPS-1, Ubuntu 26.04) + Caddy auto-HTTPS — changed 2026-10-26 | His Mac is a corporate laptop: Tailscale and personal financial data aren't allowed on it. Plain HTTPS on a real hostname (`money.tayden.dev`) replaces Serve/Funnel. |
 | Connectivity | Plaid free Trial (10 Items) for banks/brokerages; Coinbase + Kraken via Sure's direct providers | No new providers built — uncovered institutions (Fidelity NetBenefits, pension, Morgan Stanley/EquatePlus, Gemini) become manual/CSV accounts |
 | Data | Tayden's real Monarch archive never leaves his Mac | Workers build/test against synthetic fixtures matching `docs/monarch-import/SCHEMA.md` |
 | Import surface | `bin/rails monarch:import[...]` rake task, not the `Import` STI upload UI | Archive is a directory of JSON, not a single CSV; UI upload deferred as nice-to-have |
@@ -48,6 +48,12 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 | T6 Merchant spend report (swe-2-max) | [b33e15dc](https://app.devin.ai/sessions/b33e15dc395b47e28034fbb30487fe78) | [#16](https://github.com/tayden-b/sure-monarch/pull/16) | **merged** | b0970d8c |
 | T7 Flex/discretionary budget (swe-2-max) | [7110bf7e](https://app.devin.ai/sessions/7110bf7e4a4c41b09d578caca4b14660) | [#15](https://github.com/tayden-b/sure-monarch/pull/15) | **merged** (migration renumbered by orchestrator — 210000 collided with dedup) | 59aa799e |
 
+## Wave 3 — deploy retarget
+
+| Task | Session | PR | Status | Merged SHA |
+|---|---|---|---|---|
+| W3-A VPS deploy kit (`deploy/vps/`, docs/setup/VPS.md, HANDOFF.md rewrite, rehearsal) | [26748c93](https://app.devin.ai/sessions/26748c93dfb6429196e1bea18b6a4614) | TBD | **open** | |
+
 ## Integration gate
 
 **COMPLETE** — [#18](https://github.com/tayden-b/sure-monarch/pull/18) merged (`6361dd98`). One worker rehearsed the full setup on a clean VM —
@@ -59,8 +65,8 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 - Plaid Sandbox smoke task (`plaid:sandbox_smoke`) could not be exercised against
   real Plaid Sandbox in the cloud — no Plaid account exists yet. Runnable by
   Tayden after he creates dashboard keys (docs/setup/PLAID.md step 2).
-- Webhooks need Funnel permanently on for real-time pushes; manual Sync is the
-  documented alternative if he doesn't want the app public 24/7.
+- Webhooks now ride the public `money.tayden.dev` hostname (Caddy), so no
+  Funnel is needed — superseded by the VPS retarget.
 - Importer defers remaining: group-scoped/future budget rows, daily
   recurring frequencies — accepted limitations (documented in RUNBOOK).
   **Fixed by W2-F** (#17): rule positions now imported via `Rule.reorder!`
@@ -77,14 +83,15 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 1. Create the Plaid account/app and pull Sandbox keys — docs/setup/PLAID.md §1–2.
 2. Request Plaid Trial (Limited Production) access — same doc §5.
 3. Create Coinbase CDP + Kraken API keys (read-only perms in same doc §7).
-4. Run the Mac deploy kit + Tailscale expose — docs/setup/MAC.md.
-5. Drop his real Monarch archive on the Mac and run the import — docs/monarch-import/RUNBOOK.md.
-6. Link each institution (one Plaid Item each — 10 max on Trial).
+4. Create the OVH VPS-1 + DNS A record, run `deploy/vps/bin/setup-vps` — docs/setup/VPS.md.
+5. `scp` his real Monarch archive to the VPS and run the import — docs/monarch-import/RUNBOOK.md.
+6. Link each institution (one Plaid Item each — 10 max on Trial; Coinbase/Kraken via Settings → Providers).
 
 A consolidated ordered checklist lands in docs/HANDOFF.md at the end of the build.
 
 ## What's next
 
-Build complete. Tayden runs `docs/HANDOFF.md` on his Mac (≈35–50 min active).
+Build complete. Tayden runs `docs/HANDOFF.md` on a public VPS (≈45–60 min active).
 Remaining deferrals are documented in "Open issues" above: Plaid keys,
-Tailscale on the real Mac, his real archive, and accepted importer defers.
+the real VPS + `money.tayden.dev` DNS, his real archive, and accepted
+importer defers.
