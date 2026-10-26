@@ -35,6 +35,35 @@ module Assistant
     Function::RecordBillPayment
   ].freeze
 
+  # The explicit read set for scope-restricted MCP tokens (McpController's
+  # :read scope). Each class here was verified side-effect free in its `call`
+  # — queries only, no writes, imports, or job enqueues. Anything in
+  # function_classes that is not listed here is treated as a write tool: it
+  # is hidden from a read token's tools/list and answers "Unknown tool" to
+  # tools/call. Never add a class that mutates data to this list.
+  READ_ONLY_FUNCTIONS = [
+    Function::GetTransactions,
+    Function::GetRecurringTransactions,
+    Function::GetAccounts,
+    Function::GetHoldings,
+    Function::GetBalanceSheet,
+    Function::GetIncomeStatement,
+    Function::GetBudget,
+    Function::GetTags,
+    Function::GetCategories,
+    Function::GetMerchants,
+    Function::GetInsights,
+    Function::GetValuations,
+    Function::GetBills,
+    Function::GetBillDetails,
+    Function::GetBillAudit,
+    Function::GetPaycheckPlan,
+    Function::GetStatementCoverage,
+    Function::ListAccountStatements,
+    Function::GetAccountStatement,
+    Function::SearchFamilyFiles
+  ].freeze
+
   class << self
     def for_chat(chat)
       implementation_for(chat).for_chat(chat)

@@ -45,6 +45,40 @@
     </div>
   </div>
 
+  <% if @env_tokens.any? %>
+    <div class="bg-container rounded-xl shadow-border-xs p-4">
+      <div class="space-y-3">
+        <div class="space-y-1">
+          <h3 class="text-sm font-medium text-primary"><%= t(".env_tokens_title") %></h3>
+          <p class="text-sm text-secondary"><%= t(".env_tokens_subtitle") %></p>
+        </div>
+        <ul class="space-y-2">
+          <% @env_tokens.each do |env_token| %>
+            <li class="flex items-center justify-between gap-3 p-3 bg-surface-inset rounded-lg">
+              <div class="flex items-center gap-3">
+                <%= render DS::FilledIcon.new(icon: "key-round", size: "md", rounded: true) %>
+                <div class="text-sm space-y-0.5">
+                  <p class="font-medium text-primary font-mono"><%= env_token[:env_var] %></p>
+                  <p class="text-secondary font-mono"><%= env_token[:masked_token] %></p>
+                </div>
+              </div>
+              <%= render DS::Pill.new(
+                label: t(".scope_#{env_token[:scope]}"),
+                tone: env_token[:scope] == :read_write ? :warning : :info,
+                marker: false,
+                mono: true
+              ) %>
+            </li>
+          <% end %>
+        </ul>
+        <p class="text-xs text-secondary"><%= t(".env_tokens_explainer") %></p>
+        <% if @env_token_user_email.present? %>
+          <p class="text-xs text-secondary"><%= t(".env_tokens_user", email: @env_token_user_email) %></p>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
   <% if @connected_tokens.any? %>
     <div class="bg-container rounded-xl shadow-border-xs p-4">
       <div class="space-y-3">

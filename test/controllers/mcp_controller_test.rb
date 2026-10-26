@@ -99,7 +99,7 @@ class McpControllerTest < ActionDispatch::IntegrationTest
     assert_mcp_initialize_response(JSON.parse(response.body)["result"])
   end
 
-  test "rejects token with read-only scope" do
+  test "authenticates token with read-only scope into the read surface" do
     app = Doorkeeper::Application.create!(
       name: "Test MCP Client #{SecureRandom.hex(4)}",
       redirect_uri: "https://claude.ai/callback",
@@ -115,7 +115,64 @@ class McpControllerTest < ActionDispatch::IntegrationTest
     post "/mcp", params: jsonrpc_request("initialize").to_json,
          headers: mcp_headers(token.token)
 
+    assert_response :ok
+    assert_mcp_initialize_response(JSON.parse(response.body)["result"])
+
+    post "/mcp", params: jsonrpc_request("tools/list").to_json,
+         headers: mcp_headers(token.token)
+
+    assert_response :ok
+    tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+    assert_includes tool_names, "get_accounts"
+    assert_not_includes tool_names, "create_transaction"
+    assert_not_includes tool_names, "update_transaction"
+
+    post "/mcp", params: jsonrpc_request("tools/call", { name: "update_transaction", arguments: {} }).to_json,
+         headers: mcp_headers(token.token)
+
+    assert_response :ok
+    assert_equal(-32602, JSON.parse(response.body)["error"]["code"])
+  end
+
+  test "rejects Doorkeeper token without a recognized scope" do
+    app = Doorkeeper::Application.create!(
+      name: "Test MCP Client #{SecureRandom.hex(4)}",
+      redirect_uri: "https://claude.ai/callback",
+      confidential: false
+    )
+    token = Doorkeeper::AccessToken.create!( # pipelock:ignore
+      application: app,
+      resource_owner_id: @user.id,
+      scopes: "write",
+      expires_in: 1.year
+    )
+
+    post "/mcp", params: jsonrpc_request("initialize").to_json,
+         headers: mcp_headers(token.token)
+
     assert_response :unauthorized
+  end
+
+  test "Doorkeeper token holding both scopes gets the full registry" do
+    app = Doorkeeper::Application.create!(
+      name: "Test MCP Client #{SecureRandom.hex(4)}",
+      redirect_uri: "https://claude.ai/callback",
+      confidential: false
+    )
+    token = Doorkeeper::AccessToken.create!( # pipelock:ignore
+      application: app,
+      resource_owner_id: @user.id,
+      scopes: "read read_write",
+      expires_in: 1.year
+    )
+
+    post "/mcp", params: jsonrpc_request("tools/list").to_json,
+         headers: mcp_headers(token.token)
+
+    assert_response :ok
+    tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+    assert_includes tool_names, "update_transaction"
+    assert_includes tool_names, "create_transaction"
   end
 
   test "rejects expired Doorkeeper token" do
@@ -166,6 +223,47 @@ class McpControllerTest < ActionDispatch::IntegrationTest
            headers: mcp_headers(@token)
 
       assert_response :ok
+    end
+  end
+
+  test "authenticates via read-only env token" do
+    with_mcp_readonly_env do
+      post "/mcp", params: jsonrpc_request("initialize").to_json,
+           headers: mcp_headers(@token)
+
+      assert_response :ok
+      assert_mcp_initialize_response(JSON.parse(response.body)["result"])
+    end
+  end
+
+  test "read-only env token keeps full access on the read_write token when both are configured" do
+    with_env_overrides(
+      "MCP_API_TOKEN" => @token,
+      "MCP_API_TOKEN_READONLY" => "read-only-token",
+      "MCP_USER_EMAIL" => @user.email
+    ) do # pipelock:ignore
+      post "/mcp", params: jsonrpc_request("tools/list").to_json,
+           headers: mcp_headers(@token)
+
+      assert_response :ok
+      tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+      assert_includes tool_names, "update_transaction"
+
+      post "/mcp", params: jsonrpc_request("tools/list").to_json,
+           headers: mcp_headers("read-only-token")
+
+      assert_response :ok
+      tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+      assert_not_includes tool_names, "update_transaction"
+    end
+  end
+
+  test "rejects the read-only env token value against the read_write var" do
+    with_env_overrides("MCP_API_TOKEN" => "a-different-token", "MCP_USER_EMAIL" => @user.email) do # pipelock:ignore
+      post "/mcp", params: jsonrpc_request("initialize").to_json,
+           headers: mcp_headers(@token)
+
+      assert_response :unauthorized
     end
   end
 
@@ -415,6 +513,110 @@ class McpControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # -- read-only scope --
+
+  test "read-only env token lists exactly the read-only tool set" do
+    with_mcp_readonly_env do
+      post "/mcp", params: jsonrpc_request("tools/list").to_json,
+           headers: mcp_headers(@token)
+
+      assert_response :ok
+      tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+
+      expected = (Assistant.function_classes(@user) & Assistant::READ_ONLY_FUNCTIONS).map(&:name)
+      assert_equal expected, tool_names
+
+      assert_includes tool_names, "get_accounts"
+      assert_includes tool_names, "get_transactions"
+      assert_includes tool_names, "get_balance_sheet"
+
+      # Write tools must be hidden from the list, not merely refused on call
+      %w[
+        create_transaction update_transaction delete_transaction update_budget
+        create_tag update_tag create_category update_category create_goal
+        import_bank_statement
+      ].each do |write_tool|
+        assert_not_includes tool_names, write_tool
+      end
+    end
+  end
+
+  test "read-only env token lists preview reads but not preview writes for an opted-in user" do
+    @user.update!(preferences: (@user.preferences || {}).merge("preview_features_enabled" => true))
+
+    with_mcp_readonly_env do
+      post "/mcp", params: jsonrpc_request("tools/list").to_json,
+           headers: mcp_headers(@token)
+
+      assert_response :ok
+      tool_names = JSON.parse(response.body)["result"]["tools"].map { |t| t["name"] }
+
+      %w[get_bills get_bill_details get_bill_audit get_paycheck_plan get_valuations
+         get_insights list_account_statements get_account_statement get_statement_coverage].each do |read_tool|
+        assert_includes tool_names, read_tool
+      end
+
+      %w[create_bill update_bill record_bill_payment record_valuation upload_account_statement].each do |write_tool|
+        assert_not_includes tool_names, write_tool
+      end
+    end
+  end
+
+  test "read-only env token cannot call write tools" do
+    with_mcp_readonly_env do
+      assert_no_difference "Transaction.count" do
+        post "/mcp", params: jsonrpc_request("tools/call", {
+          name: "create_transaction",
+          arguments: {
+            account_id: accounts(:depository).id,
+            name: "Should not exist",
+            amount: 1,
+            currency: "USD",
+            date: Date.current.to_s
+          }
+        }, id: 55).to_json, headers: mcp_headers(@token)
+      end
+
+      assert_response :ok
+      body = JSON.parse(response.body)
+      assert_equal 55, body["id"]
+      assert_equal(-32602, body["error"]["code"])
+      assert_includes body["error"]["message"], "create_transaction"
+    end
+  end
+
+  test "read-only env token can call read tools" do
+    with_mcp_readonly_env do
+      post "/mcp", params: jsonrpc_request("tools/call", {
+        name: "get_accounts",
+        arguments: {}
+      }).to_json, headers: mcp_headers(@token)
+
+      assert_response :ok
+      result = JSON.parse(response.body)["result"]
+      assert_not result["isError"]
+      assert_kind_of Array, result["content"]
+      inner = JSON.parse(result["content"][0]["text"])
+      assert inner.present?, "expected get_accounts to return data under a read token"
+    end
+  end
+
+  test "read-only env token gets the same Unknown tool error as an unrecognized name" do
+    with_mcp_readonly_env do
+      post "/mcp", params: jsonrpc_request("tools/call", { name: "delete_transaction", arguments: {} }).to_json,
+           headers: mcp_headers(@token)
+      hidden_write_body = JSON.parse(response.body)
+
+      post "/mcp", params: jsonrpc_request("tools/call", { name: "nonexistent_tool", arguments: {} }).to_json,
+           headers: mcp_headers(@token)
+      unknown_body = JSON.parse(response.body)
+
+      assert_equal(-32602, hidden_write_body["error"]["code"])
+      assert_equal unknown_body["error"]["code"], hidden_write_body["error"]["code"]
+      assert_match(/Unknown tool/, hidden_write_body["error"]["message"])
+    end
+  end
+
   # -- tools/call --
 
   test "tools/call rejects a preview tool for a user without preview features" do
@@ -637,6 +839,10 @@ class McpControllerTest < ActionDispatch::IntegrationTest
 
     def with_mcp_env(&block)
       with_env_overrides("MCP_API_TOKEN" => @token, "MCP_USER_EMAIL" => @user.email, &block) # pipelock:ignore
+    end
+
+    def with_mcp_readonly_env(&block)
+      with_env_overrides("MCP_API_TOKEN_READONLY" => @token, "MCP_USER_EMAIL" => @user.email, &block) # pipelock:ignore
     end
 
     def with_mcp_cache

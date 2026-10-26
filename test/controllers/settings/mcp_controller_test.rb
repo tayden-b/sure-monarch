@@ -11,6 +11,34 @@ class Settings::McpControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "hides the env-token section when no static tokens are configured" do
+    get settings_mcp_path
+
+    assert_response :success
+    assert_no_match(/MCP_API_TOKEN/, response.body)
+  end
+
+  test "shows configured env tokens masked, with their scope" do
+    read_write_token = "rw-#{SecureRandom.hex(16)}"
+    read_token = "ro-#{SecureRandom.hex(16)}"
+
+    with_env_overrides(
+      "MCP_API_TOKEN" => read_write_token,
+      "MCP_API_TOKEN_READONLY" => read_token,
+      "MCP_USER_EMAIL" => @user.email
+    ) do # pipelock:ignore
+      get settings_mcp_path
+    end
+
+    assert_response :success
+    assert_match(/MCP_API_TOKEN/, response.body)
+    assert_match(/MCP_API_TOKEN_READONLY/, response.body)
+    assert_match(/read_write/, response.body)
+    assert_no_match read_write_token, response.body
+    assert_no_match read_token, response.body
+    assert_match(/#{read_token.last(4)}/, response.body)
+  end
+
   test "shows connected tokens" do
     app = Doorkeeper::Application.create!(
       name: "Claude",
