@@ -91,6 +91,13 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 - [#24](https://github.com/tayden-b/sure-monarch/pull/24) merged (`054a556b`):
   `bin/upgrade` normalizes data/archive perms as root before dropping to
   `sure` — fixes the live-box `permission denied` on the build context.
+- [#25](https://github.com/tayden-b/sure-monarch/pull/25) merged (`f1408969`):
+  dedup scanner no longer pairs two rows from the same provenance
+  (source + external_id both present, same source) — the 200 same-store
+  Monarch pairs on the live box were false positives. `SAME_SOURCE=1` /
+  `/dedup/candidates` "Include same-source" toggle preserves the
+  CSV-double-upload cleanup path. Also bumps `test_unit` CI timeout 10→20m
+  (runner setup growth was cancelling the job mid-suite).
 - **Live verified**: re-import on the VPS with #23 — all 25 real accounts
   match Monarch to the cent; net worth $365,766 (RSU excluded as in Monarch);
   Plaid sandbox smoke passed (redirect-URI dashboard step pending Tayden).
