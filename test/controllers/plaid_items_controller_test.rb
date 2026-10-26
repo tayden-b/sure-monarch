@@ -212,6 +212,126 @@ class PlaidItemsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Account successfully linked to Plaid", flash[:notice]
   end
 
+  # --- attaching to provider-created shells --------------------------------
+
+  test "select_existing_account lists a Plaid account linked to a provider-created shell" do
+    account = accounts(:depository)
+    shell = families(:dylan_family).accounts.create!(
+      name: "Plaid Shell", accountable: Depository.new, balance: 0, currency: "USD"
+    )
+    plaid_account = PlaidAccount.create!(
+      plaid_item: plaid_items(:one),
+      name: "Shell-Linked Plaid Account",
+      plaid_id: "shell_acc_1",
+      plaid_type: "depository",
+      plaid_subtype: "checking",
+      currency: "USD",
+      current_balance: 50
+    )
+    AccountProvider.create!(account: shell, provider: plaid_account, provider_type: "PlaidAccount")
+
+    get select_existing_account_plaid_items_url(account_id: account.id, region: "us")
+
+    assert_response :success
+    assert_match "Shell-Linked Plaid Account", response.body
+  end
+
+  test "select_existing_account excludes a Plaid account linked to an account with foreign entries" do
+    account = accounts(:depository)
+    # An unlinked option keeps the list non-empty
+    unlinked = PlaidAccount.create!(
+      plaid_item: plaid_items(:one),
+      name: "Unlinked Plaid Account",
+      plaid_id: "unlinked_acc_1",
+      plaid_type: "depository",
+      plaid_subtype: "checking",
+      currency: "USD",
+      current_balance: 50
+    )
+    adopted = families(:dylan_family).accounts.create!(
+      name: "Adopted Account", accountable: Depository.new, balance: 0, currency: "USD"
+    )
+    plaid_account = PlaidAccount.create!(
+      plaid_item: plaid_items(:one),
+      name: "Adopted-Linked Plaid Account",
+      plaid_id: "adopted_acc_1",
+      plaid_type: "depository",
+      plaid_subtype: "checking",
+      currency: "USD",
+      current_balance: 50
+    )
+    AccountProvider.create!(account: adopted, provider: plaid_account, provider_type: "PlaidAccount")
+    adopted.entries.create!(
+      name: "Hand entered", date: Date.current, amount: 5, currency: "USD",
+      source: nil, entryable: Transaction.new
+    )
+
+    get select_existing_account_plaid_items_url(account_id: account.id, region: "us")
+
+    assert_response :success
+    assert_match "Unlinked Plaid Account", response.body
+    assert_no_match "Adopted-Linked Plaid Account", response.body
+  end
+
+  test "link_existing_account reattaches the feed from a provider-created shell" do
+    account = accounts(:depository)
+    shell = families(:dylan_family).accounts.create!(
+      name: "Plaid Shell", accountable: Depository.new, balance: 0, currency: "USD"
+    )
+    plaid_account = PlaidAccount.create!(
+      plaid_item: plaid_items(:one),
+      name: "Shell-Linked Plaid Account",
+      plaid_id: "shell_acc_2",
+      plaid_type: "depository",
+      plaid_subtype: "checking",
+      currency: "USD",
+      current_balance: 50
+    )
+    AccountProvider.create!(account: shell, provider: plaid_account, provider_type: "PlaidAccount")
+
+    assert_no_difference "AccountProvider.count" do
+      post link_existing_account_plaid_items_url, params: {
+        account_id: account.id,
+        plaid_account_id: plaid_account.id
+      }
+    end
+
+    assert_equal account, plaid_account.account_provider.reload.account
+    assert_equal "pending_deletion", shell.reload.status
+    assert_redirected_to accounts_path
+    assert_equal "Account successfully linked to Plaid. The previous synced account was removed.", flash[:notice]
+  end
+
+  test "link_existing_account refuses to move a link off real data" do
+    account = accounts(:depository)
+    adopted = families(:dylan_family).accounts.create!(
+      name: "Adopted Account", accountable: Depository.new, balance: 0, currency: "USD"
+    )
+    plaid_account = PlaidAccount.create!(
+      plaid_item: plaid_items(:one),
+      name: "Adopted-Linked Plaid Account",
+      plaid_id: "adopted_acc_2",
+      plaid_type: "depository",
+      plaid_subtype: "checking",
+      currency: "USD",
+      current_balance: 50
+    )
+    AccountProvider.create!(account: adopted, provider: plaid_account, provider_type: "PlaidAccount")
+    adopted.entries.create!(
+      name: "Hand entered", date: Date.current, amount: 5, currency: "USD",
+      source: nil, entryable: Transaction.new
+    )
+
+    post link_existing_account_plaid_items_url, params: {
+      account_id: account.id,
+      plaid_account_id: plaid_account.id
+    }
+
+    assert_equal adopted, plaid_account.account_provider.reload.account
+    assert_redirected_to account_path(account)
+    assert_equal "This Plaid account is already linked", flash[:alert]
+  end
+
   # --- member-owned connections (issue #3579) ------------------------------
   #
   # Plaid declares `credential_scope :per_connection`, so a household member

@@ -64,15 +64,17 @@ class PlaidItemsController < ApplicationController
     return if !Current.user.admin? && !require_account_permission!(@account)
 
     # Get all Plaid accounts from this family's Plaid items for the specified region
-    # that are not yet linked to any account. A member only sees the items they
-    # own; an admin sees the family's.
+    # that are not yet linked to any account — plus provider-created shells
+    # (first sync built them before this account existed), whose link can be
+    # moved onto the chosen account instead. A member only sees the items
+    # they own; an admin sees the family's.
     scope = Current.family.plaid_items.where(plaid_region: @region)
     scope = scope.owned_by(Current.user) unless Current.user.admin?
 
     @available_plaid_accounts = scope
-      .includes(:plaid_accounts)
+      .includes(plaid_accounts: :account_provider)
       .flat_map(&:plaid_accounts)
-      .select { |pa| pa.account_provider.nil? && pa.account.nil? } # Not linked via new or legacy system
+      .select { |pa| selectable_for_account?(pa) }
 
     if @available_plaid_accounts.empty?
       redirect_to account_path(@account), alert: t(".no_available_accounts")
@@ -94,8 +96,28 @@ class PlaidItemsController < ApplicationController
 
     return if !Current.user.admin? && !require_account_permission!(@account)
 
-    # Verify the Plaid account is not already linked
-    if plaid_account.account_provider.present? || plaid_account.account.present?
+    # Already linked to a provider-created shell → move the feed onto the
+    # chosen account and retire the shell. Linked to anything else stays an
+    # error — a link is never silently moved off real data.
+    if plaid_account.account_provider.present?
+      reattach = AccountProvider::Reattach.new(
+        account_provider: plaid_account.account_provider,
+        target_account: @account
+      )
+
+      unless reattach.reattachable?
+        redirect_to account_path(@account), alert: t(".already_linked")
+        return
+      end
+
+      begin
+        reattach.call
+        redirect_to accounts_path, notice: t(".reattach_success")
+      rescue AccountProvider::Reattach::Error => e
+        redirect_to account_path(@account), alert: e.message
+      end
+      return
+    elsif plaid_account.account.present?
       redirect_to account_path(@account), alert: t(".already_linked")
       return
     end
@@ -110,6 +132,19 @@ class PlaidItemsController < ApplicationController
   end
 
   private
+
+    # Unlinked Plaid accounts are the normal choices. One linked to a
+    # provider-created shell is also offered — choosing it re-attaches the
+    # feed here and destroys the empty shell (AccountProvider::Reattach).
+    def selectable_for_account?(plaid_account)
+      if plaid_account.account_provider.nil? && plaid_account.account.nil?
+        true
+      else
+        plaid_account.account_provider.present? &&
+          AccountProvider::Reattach.reattachable?(plaid_account.account_provider)
+      end
+    end
+
     def set_plaid_item
       @plaid_item = Current.family.plaid_items.find(params[:id])
     end

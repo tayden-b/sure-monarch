@@ -61,9 +61,11 @@ class CoinbaseItem::Syncer
     end
   end
 
-  # Hook called after sync completion. Currently a no-op.
+  # Hook called after sync completion. Merges the obvious cross-source
+  # overlaps (imported row vs. provider redelivery) so the manual dedup
+  # queue only holds judgment calls.
   def perform_post_sync
-    # no-op
+    Dedup::AutoMerger.new(family: coinbase_item.family).call
   end
 
   private

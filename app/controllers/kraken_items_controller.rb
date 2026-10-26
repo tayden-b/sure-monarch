@@ -127,9 +127,22 @@ class KrakenItemsController < ApplicationController
       kraken_account.with_lock do
         next if kraken_account.account_provider.present?
 
-        account = Account.create_from_kraken_account(kraken_account)
+        # Attach to the imported (Monarch) Kraken account when one unlinked
+        # Crypto account matches — same auto-attach contract as Plaid.
+        account = AccountProvider::ImportMatcher.new(
+          family: Current.family,
+          accountable_class: Crypto,
+          institution_name: "Kraken"
+        ).match&.account || Account.create_from_kraken_account(kraken_account)
+
         provider_link = kraken_account.ensure_account_provider!(account)
-        provider_link ? created_accounts << account : account.destroy!
+        if provider_link
+          created_accounts << account
+        else
+          # Never destroy an imported account we merely attached to — only a
+          # shell this request created is safe to roll back.
+          account.destroy! if account.entries.empty? && account.holdings.empty?
+        end
       end
 
       KrakenAccount::Processor.new(kraken_account.reload).process

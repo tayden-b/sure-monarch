@@ -57,7 +57,9 @@ class PlaidItem::Syncer
   end
 
   def perform_post_sync
-    # no-op
+    # Merge the obvious cross-source overlaps (imported row vs. provider
+    # redelivery) so the manual dedup queue only holds judgment calls.
+    Dedup::AutoMerger.new(family: plaid_item.family).call
   end
 
   private

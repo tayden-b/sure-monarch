@@ -295,6 +295,11 @@ class Monarch::Importer
           account = family.accounts.build(attrs.merge(accountable: accountable))
         end
 
+        # The Monarch display name is the user's own label for the account —
+        # locking it keeps a later provider attach (Plaid, Coinbase, ...) from
+        # renaming it via enrich_attributes.
+        account.locked_attributes = account.locked_attributes.merge("name" => Time.current)
+
         track(account, "accounts") do
           account.save!
           record_mapping!("accounts", r["id"], account, r)

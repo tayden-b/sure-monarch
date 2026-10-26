@@ -60,6 +60,12 @@ tasks are now dispatched — **all 10 merged**; follow-up worker W2-F in flight,
 deploy kit, synthetic archive import + reconciliation counts, every parity
 surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 
+## Wave 4 — provider linking
+
+| Task | Session | PR | Status | Merged SHA |
+|---|---|---|---|---|
+| W4-A Attach linked accounts to imported accounts + auto-merge exact overlaps (auto-attach on first sync by mask/payload/institution; manual "Attach to existing" for sync-created shells; `Dedup::AutoMerger` post-sync; `PLAID_HISTORY_DAYS` doc'd in HANDOFF §7) | this session | `work/attach-provider-to-existing` | **open** | — |
+
 ## Open issues / follow-ups reported by workers
 
 - Plaid Sandbox smoke task (`plaid:sandbox_smoke`) could not be exercised against

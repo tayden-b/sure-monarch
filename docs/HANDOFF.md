@@ -151,6 +151,21 @@ sudo docker compose up -d
 
 ## 7. Link everything (~15 min)
 
+**Before linking, set the Plaid history window.** `PLAID_HISTORY_DAYS` (blank =
+730, Plaid's max) controls how far back the first `/transactions/sync` and
+investment-transactions pull reaches. Cover only the gap since the Monarch
+archive's as-of date plus a ~45-day buffer — the imported archive ends
+2026-09-29, so days-since + 45 ≈ **75** is enough. A short window keeps the
+overlap (and the dedup workload) small; dedup still clears whatever lands in
+it. Set it in `/opt/sure/deploy/vps/.env` and `sudo docker compose up -d`
+before the first link, then raise/remove it afterwards if you want deeper
+history.
+
+```bash
+echo "PLAID_HISTORY_DAYS=75" >> /opt/sure/deploy/vps/.env
+sudo docker compose up -d
+```
+
 🖱️ App → **Accounts → New account → Link via provider** — one connection per
 institution (Trial gives you 10 Plaid Items):
 
@@ -163,9 +178,25 @@ institution (Trial gives you 10 Plaid Items):
 | Manual Investment accounts | Morgan Stanley/EquatePlus, pension — no provider reaches these |
 | Manual CreditCard/CSV | Gemini card + exchange — Plaid's "Gemini" is the exchange only |
 
+**What the first sync does now:** each provider account auto-attaches to the
+imported account it matches — by the `(...1234)` mask in the imported name,
+else by the Monarch payload mask, else by a unique institution match — so the
+feed lands on the account that already holds your history instead of creating
+a duplicate. Anything it can't identify creates a new account; for those,
+open the imported account → **Link provider** → pick the Plaid account
+(marked "Currently linked to …") and its feed moves over and the empty
+sync-created account is removed. Ops equivalent:
+`bin/rails "providers:attach[<plaid_account_id>,<account_id>]"`.
+
 🖱️ After each link: watch the first sync land — `docker compose logs -f worker`.
-Then re-run `monarch:dedup` and clear `/dedup/candidates` (imported history
-meeting live feed is where duplicates appear; provider rows win merges — correct).
+Exact-overlap pairs (same account, same amount, ≤1 day apart, near-identical
+names) merge automatically with the provider row winning — check
+`DebugLogEntry` / worker logs for the merged count. Then re-run
+`monarch:dedup` and clear `/dedup/candidates` for whatever judgment calls
+remain (imported history meeting live feed is where duplicates appear;
+provider rows win merges — correct). Auto-merge is a per-family flag
+(`families.auto_merge_duplicates`, on by default) that only ever removes
+`source=monarch` rows — two provider rows are never auto-merged.
 The scan flags cross-source pairs only — Monarch rows vs the new provider
 feed, or manual/CSV rows vs anything. It does NOT flag two rows from the
 same provider's own feed: same `source` + own `external_id`s = real

@@ -256,8 +256,15 @@ class CoinbaseItemsController < ApplicationController
           next
         end
 
-        # Create account as Crypto exchange (all Coinbase accounts are crypto)
-        account = Account.create_from_coinbase_account(coinbase_account)
+        # Attach to the imported (Monarch) Coinbase account when one unlinked
+        # Crypto account matches — a fresh duplicate beside imported history
+        # is the failure mode this avoids.
+        account = AccountProvider::ImportMatcher.new(
+          family: Current.family,
+          accountable_class: Crypto,
+          institution_name: "Coinbase"
+        ).match&.account || Account.create_from_coinbase_account(coinbase_account)
+
         coinbase_account.ensure_account_provider!(account)
         created_accounts << account
       end

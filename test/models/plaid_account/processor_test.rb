@@ -266,7 +266,178 @@ class PlaidAccount::ProcessorTest < ActiveSupport::TestCase
     assert_not_equal original_balance, original_anchor.entry.amount
   end
 
+  # --- auto-attach to imported (Monarch) accounts --------------------------
+  #
+  # A first sync must attach the Plaid feed to the imported account it
+  # matches instead of creating a duplicate beside it. See
+  # AccountProvider::ImportMatcher for the matching rules.
+
+  test "attaches to the imported account whose name carries the mask" do
+    Account.destroy_all
+    imported = import_account(name: "TOTAL CHECKING (...1899)", accountable: Depository.new(subtype: "checking"))
+    plaid_account = build_unlinked_plaid_account(mask: "1899")
+
+    expect_default_subprocessor_calls
+
+    assert_no_difference "Account.count" do
+      assert_difference "AccountProvider.count", 1 do
+        PlaidAccount::Processor.new(plaid_account).process
+      end
+    end
+
+    imported.reload
+    assert_equal "TOTAL CHECKING (...1899)", imported.name
+    assert_equal plaid_account.id, imported.account_providers.first.provider_id
+    assert_equal 1000, imported.balance
+    assert_equal plaid_account.current_account, imported
+  end
+
+  test "attaches by Monarch payload mask when the name does not carry it" do
+    Account.destroy_all
+    imported = import_account(name: "My Chase Checking", accountable: Depository.new(subtype: "checking"), mask: "1899")
+    plaid_account = build_unlinked_plaid_account(mask: "1899")
+
+    expect_default_subprocessor_calls
+
+    assert_no_difference "Account.count" do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+
+    assert_equal imported, plaid_account.current_account
+  end
+
+  test "attaches by plaid institution when the match is unique" do
+    Account.destroy_all
+    @plaid_account.plaid_item.update!(institution_id: "ins_127991")
+    imported = import_account(
+      name: "Chase Savings",
+      accountable: Depository.new(subtype: "savings"),
+      plaid_institution_id: "ins_127991"
+    )
+    plaid_account = build_unlinked_plaid_account(mask: "0000")
+
+    expect_default_subprocessor_calls
+
+    assert_no_difference "Account.count" do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+
+    assert_equal imported, plaid_account.current_account
+  end
+
+  test "creates a new account when two candidates could match" do
+    Account.destroy_all
+    @plaid_account.plaid_item.update!(institution_id: "ins_127991")
+    import_account(name: "Chase Checking 1", accountable: Depository.new, plaid_institution_id: "ins_127991")
+    import_account(name: "Chase Checking 2", accountable: Depository.new, plaid_institution_id: "ins_127991")
+    plaid_account = build_unlinked_plaid_account(mask: "0000")
+
+    expect_default_subprocessor_calls
+
+    assert_difference "Account.count", 1 do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+  end
+
+  test "creates a new account when nothing matches" do
+    Account.destroy_all
+    import_account(name: "TOTAL CHECKING (...1899)", accountable: Depository.new)
+    plaid_account = build_unlinked_plaid_account(mask: "9999")
+
+    expect_default_subprocessor_calls
+
+    assert_difference "Account.count", 1 do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+  end
+
+  test "does not attach to a disabled imported account" do
+    Account.destroy_all
+    imported = import_account(name: "TOTAL CHECKING (...1899)", accountable: Depository.new)
+    imported.disable!
+    plaid_account = build_unlinked_plaid_account(mask: "1899")
+
+    expect_default_subprocessor_calls
+
+    assert_difference "Account.count", 1 do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+  end
+
+  test "investment attach anchors Plaid balance without double-counting holdings" do
+    Account.destroy_all
+    Holding.destroy_all
+
+    imported = import_account(
+      name: "Individual - TOD (...7633)",
+      accountable: Investment.new(subtype: "brokerage"),
+      mask: "7633"
+    )
+
+    # A Monarch holding imported at the archive date
+    security = securities(:aapl)
+    imported.holdings.create!(security: security, qty: 10, price: 150, amount: 1500, currency: "USD", date: 30.days.ago.to_date)
+
+    plaid_account = build_unlinked_plaid_account(plaid_type: "investment", mask: "7633")
+
+    PlaidAccount::Transactions::Processor.any_instance.expects(:process).once
+    PlaidAccount::Investments::TransactionsProcessor.any_instance.expects(:process).once
+    PlaidAccount::Investments::HoldingsProcessor.any_instance.expects(:process).once
+    PlaidAccount::Investments::BalanceCalculator.any_instance.expects(:balance).returns(2000).twice
+    PlaidAccount::Investments::BalanceCalculator.any_instance.expects(:cash_balance).returns(500).once
+
+    assert_no_difference "Account.count" do
+      PlaidAccount::Processor.new(plaid_account).process
+    end
+
+    imported.reload
+    assert_equal imported, plaid_account.current_account
+    assert_equal 2000, imported.balance
+    assert_equal 2000, imported.valuations.current_anchor.first.entry.amount
+
+    # The imported Monarch holding is still there, alone — Plaid's holdings
+    # processor is mocked out, so no duplicate was written by the attach.
+    assert_equal 1, imported.holdings.count
+  end
+
   private
+    def build_unlinked_plaid_account(overrides = {})
+      PlaidAccount.create!({
+        plaid_item: @plaid_account.plaid_item,
+        name: "TOTAL CHECKING",
+        plaid_id: "plaid_attach_#{SecureRandom.hex(4)}",
+        plaid_type: "depository",
+        plaid_subtype: "checking",
+        currency: "USD",
+        current_balance: 1000,
+        available_balance: 1000
+      }.merge(overrides))
+    end
+
+    def import_account(name:, accountable:, mask: nil, plaid_institution_id: nil, institution_name: "Chase")
+      account = families(:dylan_family).accounts.create!(
+        name: name,
+        accountable: accountable,
+        balance: 0,
+        cash_balance: 0,
+        currency: "USD",
+        locked_attributes: { "name" => Time.current }
+      )
+      MonarchSourceMapping.create!(
+        family: families(:dylan_family),
+        collection: "accounts",
+        monarch_id: SecureRandom.uuid,
+        record: account,
+        payload: {
+          "mask" => mask,
+          "institution" => { "name" => institution_name, "plaidInstitutionId" => plaid_institution_id },
+          "type" => { "name" => "depository" },
+          "subtype" => { "name" => "checking" }
+        }
+      )
+      account
+    end
+
     def expect_investment_product_processor_calls
       PlaidAccount::Investments::TransactionsProcessor.any_instance.expects(:process).once
       PlaidAccount::Investments::HoldingsProcessor.any_instance.expects(:process).once

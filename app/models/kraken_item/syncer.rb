@@ -61,7 +61,10 @@ class KrakenItem::Syncer
     raise
   end
 
+  # Merge the obvious cross-source overlaps (imported row vs. provider
+  # redelivery) so the manual dedup queue only holds judgment calls.
   def perform_post_sync
+    Dedup::AutoMerger.new(family: kraken_item.family).call
   end
 
   private

@@ -137,6 +137,21 @@ class Provider::PlaidTest < ActiveSupport::TestCase
     end
   end
 
+  test "PLAID_HISTORY_DAYS bounds the initial investments transactions window" do
+    with_env_overrides "PLAID_HISTORY_DAYS" => "45" do
+      @plaid.client.expects(:investments_holdings_get).returns(
+        stub(holdings: [], securities: [])
+      )
+      @plaid.client.expects(:investments_transactions_get).with do |request|
+        request.start_date == 45.days.ago.to_date.to_s
+      end.returns(
+        stub(investment_transactions: [], securities: [], total_investment_transactions: 0)
+      )
+
+      @plaid.get_item_investments("access-token")
+    end
+  end
+
   test "PLAID_REDIRECT_URI wins over APP_HOST and the request-derived fallback" do
     with_env_overrides "PLAID_REDIRECT_URI" => "https://mac.tail-net.ts.net/accounts", "APP_HOST" => "ignored.example.com" do
       assert_equal "https://mac.tail-net.ts.net/accounts",
