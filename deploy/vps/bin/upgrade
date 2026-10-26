@@ -20,6 +20,17 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   sed -n '2,11p' "$0"; exit 0
 fi
 
+# Normalize data/archive perms while we can still fix them: the dir is owned
+# by the app's container uid (mode 750) and operator-copied files land with
+# arbitrary owners/modes. The docker build-context sender walks the repo as
+# the invoking user, so anything it can't read fails the build with
+# "permission denied" — including on checkouts whose .dockerignore predates
+# the /deploy/vps/data exclusions. Root-only fix; must happen BEFORE the
+# re-exec below drops us to the app user.
+if [ "$(id -u)" = "0" ] && [ -x "$KIT_DIR/bin/fix-archive-perms" ]; then
+  "$KIT_DIR/bin/fix-archive-perms" >/dev/null
+fi
+
 # The checkout and the docker group belong to the app user — git refuses to
 # touch it as root ("dubious ownership"). Re-exec the whole script as that
 # user so `sudo ./bin/upgrade` works the same as `ssh sure@host ./bin/upgrade`.
