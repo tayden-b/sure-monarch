@@ -68,6 +68,7 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 | W4-B MCP read-only token scope (`MCP_API_TOKEN_READONLY` env + doorkeeper `read` scope → get_*/list_*/search_* tools only; write tools hidden + uncallable; masked-token list in Settings → MCP) | [d93205bd](https://app.devin.ai/sessions/d93205bdd4dc42bc804c2ba011ed788c) | [#27](https://github.com/tayden-b/sure-monarch/pull/27) | **merged** | 5b870b97 |
 | W4-C Plaid partial consent (optional products — liabilities/investments — degrade to nil on documented not-available codes + `partial_consent` flag on the item + warning alert with reconnect link; core transactions consent still fails, now with a human-readable reconnect error + `requires_update`) | [45c776ff](https://app.devin.ai/sessions/45c776ffaaa84ea28035ca5ee5187e89) | [#29](https://github.com/tayden-b/sure-monarch/pull/29) | **merged** | afc76f6d |
 | W4-D Gap balance carry-forward (net worth dipped ~96k on Oct 1: the span between the archive as-of valuation and first provider holding date re-priced holdings with no coverage → ~0; now each uncovered day carries the imported total + its own flows, repricing lands on the first covered day; derived not stored so re-syncs reproduce it) | [f08f72b3](https://app.devin.ai/sessions/f08f72b3c97e44d6a66cd2f1ae36844e) | [#30](https://github.com/tayden-b/sure-monarch/pull/30) | **merged** | a256d487 |
+| W4-E Investing ≠ expense (family flag `investment_contributions_count_as_expenses` default **false** = Monarch parity; centralized `expense_excluded_kinds`/`uncategorized_excluded_kinds` helpers feed every analytics surface; new **Invested** metric — contributions minus withdrawals — on dashboard Money-flow card, Sankey node, budget actuals, cash-flow JSON + MCP `get_income_statement`; caches keyed on the flag; toggle restores exact upstream) | [9023147c](https://app.devin.ai/sessions/9023147c2f6341fd86c646cbd02aeb7e) | [#31](https://github.com/tayden-b/sure-monarch/pull/31) | **merged** | 979dbada |
 | W4-B fix `/settings/mcp` 500 (`mask_token` shadowed forgery protection's own helper → `Encoding::CompatibilityError` on every render of that page) | [d93205bd](https://app.devin.ai/sessions/d93205bdd4dc42bc804c2ba011ed788c) | [#28](https://github.com/tayden-b/sure-monarch/pull/28) | **merged** | cef97ce6 |
 
 ## Open issues / follow-ups reported by workers
@@ -166,7 +167,7 @@ then re-run `monarch:import` on the real archive with the #21 fixes.
 **Live site:** https://money.tayden.dev (OVH VPS-1, Ubuntu 26.04, Caddy
 auto-HTTPS, nightly `pg_dump` backups at 03:15 + laptop `bin/pull-backup`).
 
-**What shipped** — 28 PRs into `monarch-baseline`, every diff reviewed by the
+**What shipped** — 30 PRs into `monarch-baseline`, every diff reviewed by the
 orchestrator, CI 7/7 on each merge head:
 
 - **Wave 1 (foundations):** Monarch archive importer with reconciliation +
@@ -191,7 +192,9 @@ orchestrator, CI 7/7 on each merge head:
   and post-sync auto-merge of exact overlaps (#26); MCP read-only token
   scope (#27, settings-page shadow fix #28); Plaid partial consent —
   declined optional products sync the rest of the item and surface a
-  reconnect notice instead of failing the sync (#29).
+  reconnect notice instead of failing the sync (#29); balance carry-forward
+  across the archive→provider gap (#30); investment contributions as savings
+  + Invested metric (#31).
 
 **Verified live:** all 25 real accounts reconcile to Monarch to the cent,
 net worth $365,766 (RSU excluded as in Monarch); Plaid sandbox smoke
@@ -207,6 +210,13 @@ passed; re-import + dedup clean.
 - `providers:attach` covers Plaid; crypto attach is auto-attach only
   (institution-name match) — manual crypto reattach has no UI path.
 - Merchant report shows spend-side only; flex donut arc is static.
+- Inv→inv matched transfers count in `invested.contributions` (same
+  population upstream already counted as expense) — a brokerage-to-brokerage
+  move inflates the Invested number until a withdrawal nets it out; rare,
+  consistent with upstream semantics.
+- A period where net refunds exceed remaining expenses shows a negative
+  Expenses card (observed on demo data: -$1,413.79) — arithmetically
+  correct, looks odd.
 - Dedup auto-merge is conservative (exact amount+currency, ≤1 day,
   name ≥0.8, same account, monarch losers only); looser pairs stay in
   `/dedup/candidates` for manual review. `auto_merge_duplicates` family
