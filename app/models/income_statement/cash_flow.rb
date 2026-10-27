@@ -18,6 +18,11 @@ class IncomeStatement::CashFlow
     totals = @statement.totals_for(current_period)
     income = totals.income_money.amount
     spending = totals.expense_money.amount
+    # `invested` is reported in both settings modes: in upstream mode it says
+    # how much of "spending" was really investing; in savings mode spending
+    # already excludes it. Either way net_savings keeps meaning
+    # income minus outflows, and invested is a component of savings.
+    invested = @statement.invested_totals(period: current_period).net
     current = cumulative_series(current_period)
     previous = cumulative_series(previous_period)
     comparison_day = @month == @as_of.beginning_of_month ? [ @as_of.day, previous.size ].min : previous.size
@@ -28,6 +33,7 @@ class IncomeStatement::CashFlow
       month: @month.iso8601, as_of: @as_of.iso8601, time_zone: @time_zone,
       currency: @statement.family.currency,
       period: period_json(current_period), income: decimal(income), spending: decimal(spending),
+      invested: decimal(invested),
       net_savings: decimal(income - spending),
       savings_rate: income.positive? ? decimal((income - spending) / income * 100) : nil,
       spending_comparison: {

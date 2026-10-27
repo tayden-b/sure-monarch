@@ -20,6 +20,7 @@ en:
     actuals_summary:
       income: "Income"
       expenses: "Expenses"
+      invested: "Invested"
     budgeted_summary:
       expected_income: "Expected income"
       budgeted: "Budgeted"

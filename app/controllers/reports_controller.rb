@@ -382,7 +382,7 @@ class ReportsController < ApplicationController
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Transaction.expense_excluded_kinds(Current.family))
         .includes(entry: :account, category: :parent)
       transactions = exclude_tax_advantaged_accounts(transactions)
 
@@ -770,7 +770,7 @@ class ReportsController < ApplicationController
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Transaction.expense_excluded_kinds(Current.family))
         .includes(entry: :account, category: [])
       transactions = exclude_tax_advantaged_accounts(transactions)
 
@@ -809,7 +809,7 @@ class ReportsController < ApplicationController
         .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
-        .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
+        .where.not(kind: Transaction.expense_excluded_kinds(Current.family))
         .includes(entry: :account, category: [], merchant: [])
       transactions = exclude_tax_advantaged_accounts(transactions)
 

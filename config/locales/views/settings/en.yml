@@ -207,6 +207,8 @@ en:
         personal_budgets_hint: Enable individual budgets for each family member.
         household_budget_enabled: Household budget
         household_budget_enabled_hint: Keep a shared household budget alongside personal budgets. Turn off to use personal budgets only.
+        investment_contributions_count_as_expenses: Count investment contributions as expenses
+        investment_contributions_count_as_expenses_hint: When off, money moved into your investment accounts is excluded from expenses and reported separately as Invested savings. Turn on for upstream behavior.
         budget_sharing_title: Budget sharing
         budget_sharing_subtitle: Let other members view or edit your personal budget
         budget_sharing_no_members: No other members in your %{moniker} to share with

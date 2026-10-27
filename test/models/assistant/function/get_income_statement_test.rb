@@ -30,6 +30,25 @@ class Assistant::Function::GetIncomeStatementTest < ActiveSupport::TestCase
     assert_not result.key?(:previous_period)
   end
 
+  test "invested is reported alongside income and expense" do
+    account = @family.accounts.create!(name: "Checking", currency: @family.currency, balance: 0, accountable: Depository.new)
+    entry = Entry.create!(
+      account: account,
+      entryable: Transaction.create!(kind: "investment_contribution"),
+      date: Date.current,
+      name: "401k deferral",
+      amount: 500,
+      currency: "USD"
+    )
+
+    result = @fn.call(@params)
+
+    assert result[:invested].key?(:total)
+    assert result[:invested].key?(:contributions)
+    assert result[:invested].key?(:withdrawals)
+    assert_equal Money.new(500, @family.currency).format, result[:invested][:total]
+  end
+
   test "group_by month returns one bucket per calendar month" do
     result = @fn.call(@params.merge(
       "start_date" => "2025-01-15",

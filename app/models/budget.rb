@@ -23,7 +23,8 @@ class Budget < ApplicationRecord
   monetize :budgeted_spending, :expected_income, :allocated_spending,
            :actual_spending, :available_to_spend, :available_to_allocate,
            :estimated_spending, :estimated_income, :actual_income, :remaining_expected_income,
-           :total_rolled_over, :flex_spending, :flex_actual_spending, :flex_available_to_spend
+           :total_rolled_over, :flex_spending, :flex_actual_spending, :flex_available_to_spend,
+           :actual_invested
 
   class << self
     def date_to_param(date)
@@ -408,6 +409,13 @@ class Budget < ApplicationRecord
 
   def actual_spending
     net_totals.total_net_expense
+  end
+
+  # Money moved into investment accounts this period, net of withdrawals —
+  # savings, not spending. Only shown when the family treats contributions
+  # as savings; otherwise that money is already inside actual_spending.
+  def actual_invested
+    @actual_invested ||= income_statement.invested_totals(period: period).net
   end
 
   def budget_category_actual_spending(budget_category)

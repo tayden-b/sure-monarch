@@ -102,6 +102,30 @@ class Transaction < ApplicationRecord
   #     budget" are different questions; only the former belongs here.
   UNCATEGORIZED_EXCLUDED_KINDS = %w[funds_movement cc_payment].freeze
 
+  # Family-aware versions of the two exclusion lists above.
+  #
+  # Upstream counts investment_contribution as a real outflow everywhere
+  # (#2592). Families that turn off `investment_contributions_count_as_expenses`
+  # treat investing as savings instead: the kind joins the exclusion lists so
+  # it leaves expense totals, budget actuals and the Uncategorized counts.
+  # loan_payment stays an outflow either way — the fork keeps upstream's
+  # position that a loan payment is consumption of cash, not investing.
+  #
+  # Use these helpers instead of the raw constants wherever the answer must
+  # respect the family setting, so every analytics surface stays in sync.
+  # A nil family keeps upstream behavior (counted as expense).
+  def self.expense_excluded_kinds(family)
+    kinds = BUDGET_EXCLUDED_KINDS.dup
+    kinds << "investment_contribution" if family && !family.investment_contributions_count_as_expenses?
+    kinds
+  end
+
+  def self.uncategorized_excluded_kinds(family)
+    kinds = UNCATEGORIZED_EXCLUDED_KINDS.dup
+    kinds << "investment_contribution" if family && !family.investment_contributions_count_as_expenses?
+    kinds
+  end
+
   # All valid investment activity labels (for UI dropdown)
   ACTIVITY_LABELS = [
     "Buy", "Sell", "Sweep In", "Sweep Out", "Dividend", "Reinvestment",

@@ -5,6 +5,8 @@ class Transaction::SearchTest < ActiveSupport::TestCase
 
   setup do
     @family = families(:dylan_family)
+    # These tests assert upstream behaviour: contributions count as expenses.
+    @family.update!(investment_contributions_count_as_expenses: true)
     @checking_account = accounts(:depository)
     @credit_card_account = accounts(:credit_card)
     @loan_account = accounts(:loan)

@@ -533,10 +533,13 @@ class TransactionsController < ApplicationController
     # Includes Family#accounts_status_version because `uncategorized_transactions`
     # filters on account status (draft/active), and toggling an account's
     # active status (AccountsController#toggle_active) doesn't touch `entries`
-    # or `AccountShare`, so it wouldn't otherwise bust this cache.
+    # or `AccountShare`, so it wouldn't otherwise bust this cache. The
+    # contributions-as-expenses flag is on it for the same reason: it changes
+    # which kinds the scope excludes.
     def uncategorized_count_cache_key
       "transactions_uncategorized_count/v4/#{Current.family.id}/#{Current.user.id}/" \
-        "#{Current.family.entries_version}/#{Current.family.accounts_status_version}/#{Current.account_share_version}"
+        "#{Current.family.entries_version}/#{Current.family.accounts_status_version}/#{Current.account_share_version}/" \
+        "#{Current.family.investment_contributions_count_as_expenses}"
     end
 
     # Flag toggles update transactions.updated_at, not entries, so this key is

@@ -1757,16 +1757,18 @@ RSpec.configure do |config|
             properties: { date: { type: :string, format: :date }, amount: { type: :string, description: 'Cumulative decimal amount in family currency' } }
           },
           CashFlowSankey: {
-            type: :object, required: %w[basis income spending net_savings nodes links],
-            description: 'Refunds net within each category. Parent direct amounts exclude child totals before partitioning by direction. Graph income/spending may differ from gross monthly totals; net savings agrees. Decimal strings retain FX precision. Empty flow has empty nodes and links.',
+            type: :object, required: %w[basis income spending invested net_savings nodes links],
+            description: 'Refunds net within each category. Parent direct amounts exclude child totals before partitioning by direction. Graph income/spending may differ from gross monthly totals; net savings agrees. When the family treats investment contributions as savings, an investments node carries the period net invested flow out of Cash Flow; in upstream mode invested is zero and the money stays inside expense categories. Decimal strings retain FX precision. Empty flow has empty nodes and links.',
             properties: {
               basis: { type: :string, enum: [ 'net_by_category' ] },
-              income: { type: :string }, spending: { type: :string }, net_savings: { type: :string },
+              income: { type: :string }, spending: { type: :string },
+              invested: { type: :string, description: 'Net invested flow for the period (contributions minus withdrawals); zero when the family counts contributions as expenses' },
+              net_savings: { type: :string },
               nodes: { type: :array, items: {
                 type: :object, required: %w[id name kind value percentage category_id filter_value color],
                 properties: {
                   id: { type: :string, description: 'Stable direction-prefixed category identifier or structural identifier' },
-                  name: { type: :string }, kind: { type: :string, enum: %w[income expense cash_flow surplus deficit] },
+                  name: { type: :string }, kind: { type: :string, enum: %w[income expense investments cash_flow surplus deficit] },
                   value: { type: :string, description: 'Nonnegative decimal in envelope currency' },
                   percentage: { type: :string, description: 'Percentage of parent, or side total for root categories; structural balancing nodes use central capacity' },
                   category_id: { type: :string, format: :uuid, nullable: true },
@@ -1794,12 +1796,14 @@ RSpec.configure do |config|
           },
           CashFlow: {
             type: :object,
-            required: %w[month as_of time_zone currency period income spending net_savings savings_rate spending_comparison],
+            required: %w[month as_of time_zone currency period income spending invested net_savings savings_rate spending_comparison],
             properties: {
               month: { type: :string, format: :date }, as_of: { type: :string, format: :date },
               time_zone: { type: :string }, currency: { type: :string },
               period: { '$ref' => '#/components/schemas/FinancialPeriod' },
-              income: { type: :string }, spending: { type: :string }, net_savings: { type: :string },
+              income: { type: :string }, spending: { type: :string },
+              invested: { type: :string, description: 'Net invested flow for the month (contributions minus withdrawals). Reported in both settings modes; a component of net_savings, not additional to it' },
+              net_savings: { type: :string },
               sankey: { '$ref' => '#/components/schemas/CashFlowSankey' },
               savings_rate: { type: :string, nullable: true, description: 'Percentage points; null when income is nonpositive. May be negative.' },
               spending_comparison: {

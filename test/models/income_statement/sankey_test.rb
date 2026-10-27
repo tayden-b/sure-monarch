@@ -87,6 +87,29 @@ class IncomeStatement::SankeyTest < ActiveSupport::TestCase
     assert_balanced(result)
   end
 
+  test "invested money gets its own Investments node in savings mode" do
+    transaction(150, @parent)
+    create_transaction(account: @account, amount: 1000, date: @month, kind: "investment_contribution")
+    result = graph
+    assert_equal "150.0", result[:spending]
+    assert_equal "1000.0", result[:invested]
+    assert_equal "1000.0", node(result, "investments_node")[:value]
+    assert_equal "investments", node(result, "investments_node")[:kind]
+    assert_equal "-1150.0", result[:net_savings]
+    assert_balanced(result)
+  end
+
+  test "upstream mode has no Investments node" do
+    @family.update!(investment_contributions_count_as_expenses: true)
+    transaction(150, @parent)
+    create_transaction(account: @account, amount: 1000, date: @month, kind: "investment_contribution", category: @parent)
+    result = graph
+    assert_equal "1150.0", result[:spending]
+    assert_equal "0.0", result[:invested]
+    assert_nil node(result, "investments_node")
+    assert_balanced(result)
+  end
+
   test "empty graph and uncategorized identifiers are deterministic" do
     assert_empty graph[:nodes]
     assert_empty graph[:links]

@@ -105,17 +105,19 @@ class Entry < ApplicationRecord
   # Uncategorized transaction entries on draft or active accounts.
   # Caller is responsible for scoping to accessible entries before applying this scope.
   #
-  # Uses Transaction::UNCATEGORIZED_EXCLUDED_KINDS rather than TRANSFER_KINDS so
+  # Uses Transaction.uncategorized_excluded_kinds rather than TRANSFER_KINDS so
   # the badge count and Quick Categorize wizard cover exactly what the
   # Transactions "Uncategorized" filter lists — notably the budget-tracked
   # loan_payment / investment_contribution transfers the dashboard already
   # counts, which were previously uncategorizable from any surface (#2592).
-  scope :uncategorized_transactions, -> {
+  # Families that treat investment contributions as savings exclude that kind
+  # too — it's no longer theirs to categorize.
+  scope :uncategorized_transactions, ->(family = Current.family) {
     joins(:account)
       .joins("INNER JOIN transactions ON transactions.id = entries.entryable_id AND entries.entryable_type = 'Transaction'")
       .where(accounts: { status: %w[draft active] })
       .where(transactions: { category_id: nil })
-      .where.not(transactions: { kind: Transaction::UNCATEGORIZED_EXCLUDED_KINDS })
+      .where.not(transactions: { kind: Transaction.uncategorized_excluded_kinds(family) })
       .where(entries: { excluded: false })
   }
 
