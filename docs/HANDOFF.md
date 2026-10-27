@@ -265,6 +265,7 @@ token modes are configured, masked. Full detail: `docs/hosting/mcp.md`.
 | Re-run import | `monarch:revert` first (full delete of imported records), then re-import. |
 | Restore a backup | `cd /opt/sure/deploy/vps && ./bin/restore` (latest) or `./bin/restore backups/<file>.dump` — it stops web/worker, restores, restarts. |
 | Want factory reset | `cd /opt/sure/deploy/vps && docker compose down -v` (deletes DB+volumes) → re-run `setup-vps`. `./bin/backup` FIRST. |
+| Dashboard opens on wrong period | Default it to all time once: `cd /opt/sure/deploy/vps && sudo docker compose exec web bin/rails runner 'User.first.update!(default_period: "all_time")'` — or Settings → Preferences → Default Period → "All time" for your user. |
 | Docs needed mid-flow | `docs/setup/VPS.md` (kit), `docs/setup/PLAID.md` (Plaid detail), `docs/monarch-import/RUNBOOK.md` (import detail), `docs/REHEARSAL.md` (what was proven). |
 
 ## OS note

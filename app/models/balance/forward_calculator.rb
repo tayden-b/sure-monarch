@@ -18,7 +18,7 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
     Rails.logger.tagged("Balance::ForwardCalculator") do
       start_cash_balance, start_non_cash_balance = resolve_starting_balances
 
-      calc_start_date.upto(calc_end_date).map do |date|
+      balances = calc_start_date.upto(calc_end_date).map do |date|
         valuation = sync_cache.get_valuation(date)
 
         if valuation
@@ -59,6 +59,10 @@ class Balance::ForwardCalculator < Balance::BaseCalculator
 
         output_balance
       end
+
+      apply_imported_gap_carry!(balances)
+
+      balances
     end
   end
 
