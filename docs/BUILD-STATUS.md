@@ -66,6 +66,8 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 |---|---|---|---|---|
 | W4-A Attach linked accounts to imported accounts + auto-merge exact overlaps (auto-attach on first sync by mask/payload/institution; manual "Attach to existing" for sync-created shells; `Dedup::AutoMerger` post-sync; `PLAID_HISTORY_DAYS` doc'd in HANDOFF §7) | [716ae276](https://app.devin.ai/sessions/716ae2760c684ba9a5f7ed848553fd24) | [#26](https://github.com/tayden-b/sure-monarch/pull/26) | **merged** (1 correction round: cross-class reattach guard) | f725fdca |
 | W4-B MCP read-only token scope (`MCP_API_TOKEN_READONLY` env + doorkeeper `read` scope → get_*/list_*/search_* tools only; write tools hidden + uncallable; masked-token list in Settings → MCP) | [d93205bd](https://app.devin.ai/sessions/d93205bdd4dc42bc804c2ba011ed788c) | [#27](https://github.com/tayden-b/sure-monarch/pull/27) | **merged** | 5b870b97 |
+| W4-C Plaid partial consent (optional products — liabilities/investments — degrade to nil on documented not-available codes + `partial_consent` flag on the item + warning alert with reconnect link; core transactions consent still fails, now with a human-readable reconnect error + `requires_update`) | [45c776ff](https://app.devin.ai/sessions/45c776ffaaa84ea28035ca5ee5187e89) | [#29](https://github.com/tayden-b/sure-monarch/pull/29) | **merged** | afc76f6d |
+| W4-B fix `/settings/mcp` 500 (`mask_token` shadowed forgery protection's own helper → `Encoding::CompatibilityError` on every render of that page) | [d93205bd](https://app.devin.ai/sessions/d93205bdd4dc42bc804c2ba011ed788c) | [#28](https://github.com/tayden-b/sure-monarch/pull/28) | **merged** | cef97ce6 |
 
 ## Open issues / follow-ups reported by workers
 
@@ -130,9 +132,10 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
 - **Real linking started**: Fidelity attached 3/7 by mask; the 4 workplace
   accounts needed `providers:attach` (masks differ from Monarch) — worked.
   Chase item sync failed hard on `ADDITIONAL_CONSENT_REQUIRED` for
-  liabilities → worker `work/plaid-partial-consent` making optional products
-  non-fatal + UI notice (session
-  [45c776ff](https://app.devin.ai/sessions/45c776ffaaa84ea28035ca5ee5187e89)).
+  liabilities → **fixed + merged** in [#29](https://github.com/tayden-b/sure-monarch/pull/29)
+  (`afc76f6d`): the item now syncs everything it has consent for and shows
+  "Liabilities data not shared — reconnect to add" on the connection card;
+  re-link Chase via the Reconnect link and grant liabilities to fill it in.
 - VPS kit OVH fixes **merged** in [#22](https://github.com/tayden-b/sure-monarch/pull/22)
   (`75e9eca6`): sshd drop-in renamed 00-* (beats cloud-init's 50-*, verified via
   `sshd -T`) + lockout guard + root key-mirror extended to sudo user, archive
@@ -162,7 +165,7 @@ then re-run `monarch:import` on the real archive with the #21 fixes.
 **Live site:** https://money.tayden.dev (OVH VPS-1, Ubuntu 26.04, Caddy
 auto-HTTPS, nightly `pg_dump` backups at 03:15 + laptop `bin/pull-backup`).
 
-**What shipped** — 26 PRs into `monarch-baseline`, every diff reviewed by the
+**What shipped** — 28 PRs into `monarch-baseline`, every diff reviewed by the
 orchestrator, CI 7/7 on each merge head:
 
 - **Wave 1 (foundations):** Monarch archive importer with reconciliation +
@@ -185,7 +188,9 @@ orchestrator, CI 7/7 on each merge head:
   provider attach — linking Plaid/Coinbase/Kraken attaches to the imported
   account instead of duplicating it, with auto-attach, manual reattach,
   and post-sync auto-merge of exact overlaps (#26); MCP read-only token
-  scope (#27).
+  scope (#27, settings-page shadow fix #28); Plaid partial consent —
+  declined optional products sync the rest of the item and surface a
+  reconnect notice instead of failing the sync (#29).
 
 **Verified live:** all 25 real accounts reconcile to Monarch to the cent,
 net worth $365,766 (RSU excluded as in Monarch); Plaid sandbox smoke
