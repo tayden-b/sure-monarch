@@ -26,6 +26,10 @@ en:
         institution.
       no_accounts_title: No accounts found
       provider_name: Plaid
+      partial_consent: "%{products} data not shared — reconnect to add"
+      partial_consent_retrying: "%{products} data temporarily unavailable — will
+        retry on next sync"
+      reconnect: Reconnect
       requires_update: Reconnect
       status: Last synced %{timestamp} ago
       status_never: Requires data sync

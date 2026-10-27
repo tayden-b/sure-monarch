@@ -8,6 +8,30 @@ class PlaidItem::Importer
     fetch_and_import_item_data
     fetch_and_import_accounts_data
     plaid_item.good! if plaid_item.requires_update?
+  rescue PlaidItem::ConsentRequiredError => e
+    # The account-import transaction that raised this has rolled back, so the
+    # reconnect flag and the support log entry must be written here — after
+    # the rollback — or they'd be discarded with it. update_columns skips the
+    # item's validations: the plaid_accounts association still holds the
+    # in-flight, unvalidated records from the rolled-back transaction.
+    plaid_item.update_columns(status: :requires_update, updated_at: Time.current)
+
+    DebugLogEntry.capture(
+      category: "provider_sync",
+      level: "error",
+      message: "Plaid #{e.product} sync requires additional consent for item #{plaid_item.name}",
+      source: self.class.name,
+      provider_key: "plaid",
+      family: plaid_item.family,
+      metadata: {
+        plaid_item_id: plaid_item.id,
+        institution_id: plaid_item.institution_id,
+        product: e.product,
+        error_code: e.error_code
+      }
+    )
+
+    raise
   rescue Plaid::ApiError => e
     handle_plaid_error(e)
   end

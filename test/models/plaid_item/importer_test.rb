@@ -73,4 +73,64 @@ class PlaidItem::ImporterTest < ActiveSupport::TestCase
 
     assert_predicate @plaid_item.reload, :requires_update?
   end
+
+  test "a declined optional product does not fail the import" do
+    @importer.stubs(:fetch_and_import_item_data)
+    @plaid_item.update!(available_products: %w[transactions liabilities], billed_products: [])
+
+    @mock_provider.expects(:get_item_accounts).with(@plaid_item.access_token).returns(
+      OpenStruct.new(accounts: [
+        OpenStruct.new(
+          account_id: "acc_1",
+          type: "credit",
+          subtype: "credit card",
+          name: "Test Credit Card",
+          mask: "1234",
+          balances: OpenStruct.new(current: 100, available: 80, iso_currency_code: "USD")
+        )
+      ])
+    )
+    @mock_provider.expects(:get_transactions).returns(
+      OpenStruct.new(added: [], modified: [], removed: [], cursor: "cursor_1")
+    )
+    @mock_provider.expects(:get_item_liabilities).raises(
+      Plaid::ApiError.new(
+        code: 400,
+        response_body: { "error_code" => "ADDITIONAL_CONSENT_REQUIRED" }.to_json
+      )
+    )
+
+    assert_difference -> { DebugLogEntry.count }, 1 do
+      @importer.import
+    end
+
+    assert @plaid_item.plaid_accounts.find_by(plaid_id: "acc_1").persisted?,
+      "accounts should still import when an optional product is declined"
+    assert_equal "ADDITIONAL_CONSENT_REQUIRED",
+      @plaid_item.reload.unavailable_products.dig("liabilities", "error_code")
+    assert_predicate @plaid_item, :good?
+  end
+
+  test "missing transactions consent fails the import and flags the item for reconnect" do
+    @importer.stubs(:fetch_and_import_item_data)
+    @plaid_item.update!(available_products: %w[transactions], billed_products: [])
+
+    @mock_provider.expects(:get_item_accounts).with(@plaid_item.access_token).returns(
+      OpenStruct.new(accounts: [ OpenStruct.new(account_id: "acc_1", type: "depository") ])
+    )
+    @mock_provider.expects(:get_transactions).raises(
+      Plaid::ApiError.new(
+        code: 400,
+        response_body: { "error_code" => "ADDITIONAL_CONSENT_REQUIRED" }.to_json
+      )
+    )
+
+    PlaidAccount::Importer.any_instance.expects(:import).never
+
+    assert_difference -> { DebugLogEntry.count }, 1 do
+      assert_raises(PlaidItem::ConsentRequiredError) { @importer.import }
+    end
+
+    assert_predicate @plaid_item.reload, :requires_update?
+  end
 end
