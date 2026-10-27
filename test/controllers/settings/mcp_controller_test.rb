@@ -39,6 +39,16 @@ class Settings::McpControllerTest < ActionDispatch::IntegrationTest
     assert_match(/#{read_token.last(4)}/, response.body)
   end
 
+  # mask_token is also a private helper of forgery protection, reached by
+  # csrf_meta_tags on every render. When this controller defined its own,
+  # the page 500ed (binary CSRF secret interpolated with UTF-8). Test env
+  # disables forgery protection, so request specs can't catch a shadow —
+  # pin the lookup chain instead.
+  test "does not shadow forgery protection's mask_token" do
+    refute_equal Settings::McpController,
+      Settings::McpController.instance_method(:mask_token).owner
+  end
+
   test "shows connected tokens" do
     app = Doorkeeper::Application.create!(
       name: "Claude",

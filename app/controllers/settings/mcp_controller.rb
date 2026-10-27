@@ -39,11 +39,15 @@ class Settings::McpController < ApplicationController
         token = ENV[entry[:env_var]].presence
         next unless token
 
-        entry.merge(masked_token: mask_token(token))
+        entry.merge(masked_token: mask_env_token(token))
       end
     end
 
-    def mask_token(token)
+    # Named mask_env_token, not mask_token: ActionController's forgery
+    # protection defines its own private mask_token (used by csrf_meta_tags
+    # via masked_authenticity_token), and shadowing it makes every render
+    # raise Encoding::CompatibilityError on the binary CSRF secret.
+    def mask_env_token(token)
       return "••••" if token.length < 12
 
       "#{token.first(4)}••••#{token.last(4)}"
