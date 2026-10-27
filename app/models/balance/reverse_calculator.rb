@@ -15,7 +15,7 @@ class Balance::ReverseCalculator < Balance::BaseCalculator
       # materialized. Reconciliation waypoints below the anchor reset the
       # balance on their own dates; use_opening_anchor_for_date? still keys off
       # the anchor's real date, so the anchor's own treatment is unchanged.
-      account.current_anchor_date.downto(calculation_start_date).map do |date|
+      balances = account.current_anchor_date.downto(calculation_start_date).map do |date|
         flows = flows_for_date(date)
         valuation = sync_cache.get_valuation(date)
         cash_adjustments = 0
@@ -86,6 +86,10 @@ class Balance::ReverseCalculator < Balance::BaseCalculator
 
         output_balance
       end
+
+      apply_imported_gap_carry!(balances)
+
+      balances
     end
   end
 

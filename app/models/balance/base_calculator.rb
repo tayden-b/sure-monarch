@@ -157,6 +157,104 @@ class Balance::BaseCalculator
       raise NotImplementedError, "Directional calculators must implement this method"
     end
 
+    # ---------------------------------------------------------------
+    # Imported archive -> provider-link gap carry
+    #
+    # A linked investment account can have an imported total-balance
+    # valuation (Monarch archive, reconciliation kind, entry source
+    # "monarch") followed by a span of dates where holdings cannot be
+    # repriced: imported holdings are a single as-of snapshot of offline
+    # securities and provider holdings/prices only begin part-way to the
+    # current anchor. Re-pricing those dates collapses the non-cash
+    # component to whatever sparse coverage exists, so the dates instead
+    # carry the imported valuation's total forward with their own entry
+    # flows. This is derived — not stored — so re-materializing (e.g. on
+    # each provider re-sync) reproduces the same series.
+    # ---------------------------------------------------------------
+
+    # Latest imported total-balance valuation date — the anchor the gap
+    # carries forward from. Provider-written valuations carry no source.
+    def imported_gap_anchor_date
+      return @imported_gap_anchor_date if defined?(@imported_gap_anchor_date)
+
+      @imported_gap_anchor_date = account.entries
+        .where(entryable_type: "Valuation", source: Monarch::Importer::SOURCE)
+        .maximum(:date)
+    end
+
+    # First provider holdings date after the imported anchor — where real
+    # holdings coverage resumes. nil means coverage never begins (e.g.
+    # provider reports holdings with no prices): the gap runs to series end.
+    def gap_coverage_start_date
+      return @gap_coverage_start_date if defined?(@gap_coverage_start_date)
+
+      @gap_coverage_start_date = imported_gap_anchor_date && account.holdings
+        .where.not(account_provider_id: nil)
+        .where("date > ?", imported_gap_anchor_date)
+        .minimum(:date)
+    end
+
+    # Rewrites emitted rows inside the imported->provider coverage gap so
+    # they carry the imported valuation's total (plus the dates' own entry
+    # flows) instead of re-pricing holdings that have no complete price
+    # coverage. The first covered day after the gap keeps its real
+    # end-of-day values but starts from the carried position, so the
+    # generated columns reconcile and the repricing lands on that day
+    # rather than smearing backwards through the gap.
+    def apply_imported_gap_carry!(balances)
+      anchor = imported_gap_anchor_date
+      return if anchor.blank? || account.balance_type != :investment || balances.empty?
+
+      last = balances.map(&:date).max
+      return if last <= anchor
+
+      gap_last = [ gap_coverage_start_date&.prev_day || last, last ].min
+
+      # {date => [end_cash, end_non_cash]} over the anchor and each
+      # uncovered date after it. A valuation inside the gap re-seeds the
+      # carry to its own total and split.
+      components = {}
+      cash = non_cash = nil
+      anchor.upto(gap_last) do |date|
+        valuation = sync_cache.get_valuation(date)
+        flows = flows_for_date(date)
+
+        if valuation
+          cash = derive_cash_balance_on_date_from_total(total_balance: valuation.amount, date: date)
+          non_cash = valuation.amount - cash
+        else
+          cash += (flows[:cash_inflows] - flows[:cash_outflows]) * flows_factor
+          non_cash += (flows[:non_cash_inflows] - flows[:non_cash_outflows]) * flows_factor
+        end
+
+        components[date] = [ cash, non_cash ]
+      end
+
+      balances.each do |row|
+        prev = components[row.date - 1]
+        next if prev.nil?
+
+        if components.key?(row.date) && sync_cache.get_valuation(row.date).nil?
+          # Uncovered gap day: carry start, end and split so the generated
+          # end-of-day columns reproduce the carried values.
+          row.start_cash_balance, row.start_non_cash_balance = prev
+          row.cash_balance, end_non_cash = components[row.date]
+          row.balance = row.cash_balance + end_non_cash
+          row.cash_adjustments = 0
+          row.non_cash_adjustments = 0
+          row.net_market_flows = 0
+        else
+          # First covered day after the gap (or a valuation inside it):
+          # end-of-day stays real but starts from the carried position.
+          row.start_cash_balance, row.start_non_cash_balance = prev
+          end_non_cash = row.balance - row.cash_balance
+          row.net_market_flows = end_non_cash - prev[1] - (row.non_cash_inflows - row.non_cash_outflows) * row.flows_factor
+          row.cash_adjustments = row.cash_balance - prev[0] - (row.cash_inflows - row.cash_outflows) * row.flows_factor
+          row.non_cash_adjustments = 0
+        end
+      end
+    end
+
     def build_balance(date:, **args)
       Balance::BalanceData.new(
         account: account,
