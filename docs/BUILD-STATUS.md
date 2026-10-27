@@ -117,9 +117,22 @@ surface at desktop and mobile widths, Plaid Sandbox smoke, backup/restore.
   link), and `Dedup::AutoMerger` post-sync merges exact cross-source overlaps
   (same account, same amount+currency, ≤1d, name ≥0.8, monarch losers only,
   `families.auto_merge_duplicates` default on).
+- [#28](https://github.com/tayden-b/sure-monarch/pull/28) merged (`cef97ce6`):
+  `/settings/mcp` 500ed for all signed-in users — the controller's private
+  `mask_token` helper shadowed forgery protection's own `mask_token`
+  (`csrf_meta_tags` → binary CSRF secret + UTF-8 literal →
+  `Encoding::CompatibilityError`). Renamed to `mask_env_token` + a lookup-chain
+  regression test (test env disables forgery protection, so request specs
+  can't catch a shadow).
 - **Live verified**: re-import on the VPS with #23 — all 25 real accounts
   match Monarch to the cent; net worth $365,766 (RSU excluded as in Monarch);
   Plaid sandbox smoke passed (redirect-URI dashboard step pending Tayden).
+- **Real linking started**: Fidelity attached 3/7 by mask; the 4 workplace
+  accounts needed `providers:attach` (masks differ from Monarch) — worked.
+  Chase item sync failed hard on `ADDITIONAL_CONSENT_REQUIRED` for
+  liabilities → worker `work/plaid-partial-consent` making optional products
+  non-fatal + UI notice (session
+  [45c776ff](https://app.devin.ai/sessions/45c776ffaaa84ea28035ca5ee5187e89)).
 - VPS kit OVH fixes **merged** in [#22](https://github.com/tayden-b/sure-monarch/pull/22)
   (`75e9eca6`): sshd drop-in renamed 00-* (beats cloud-init's 50-*, verified via
   `sshd -T`) + lockout guard + root key-mirror extended to sudo user, archive
