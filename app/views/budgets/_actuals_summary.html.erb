@@ -54,4 +54,15 @@
       </div>
     <% end %>
   </div>
+
+  <%# Read-only savings line: when the family treats contributions as
+      savings, money moved into investment accounts is excluded from the
+      expense actuals above and reported here instead. When the family
+      counts them as expenses they are already inside Expenses. %>
+  <% unless budget.family.investment_contributions_count_as_expenses? %>
+    <div class="p-4 border-t border-secondary">
+      <h3 class="text-sm text-secondary mb-2"><%= t(".invested") %></h3>
+      <span class="inline-block mb-2 text-xl font-medium text-primary privacy-sensitive"><%= budget.actual_invested_money.format %></span>
+    </div>
+  <% end %>
 </div>

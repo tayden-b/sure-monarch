@@ -22,6 +22,10 @@ class Assistant::Function::GetIncomeStatement < Assistant::Function
         - Per account: pass account_ids from get_accounts (totals only; the
           category breakdown is family-wide and is omitted with this filter)
 
+        Every result also carries `invested`: money moved into the user's
+        investment accounts (contributions) minus withdrawals for the period —
+        the savings side of their cash flow.
+
         Simple example:
 
         ```
@@ -138,6 +142,7 @@ class Assistant::Function::GetIncomeStatement < Assistant::Function
           total: format_money(expense_data.total),
           by_category: to_ai_category_totals(expense_data.category_totals)
         },
+        invested: invested_json(income_statement.invested_totals(period: period)),
         insights: get_insights(income_data, expense_data)
       }
     end
@@ -156,6 +161,7 @@ class Assistant::Function::GetIncomeStatement < Assistant::Function
         account_ids: account_ids,
         income: { total: format_money(totals.income_money.amount), by_category: nil },
         expense: { total: format_money(totals.expense_money.amount), by_category: nil },
+        invested: invested_json(income_statement.invested_totals(period: period, account_ids: account_ids)),
         net: format_money(totals.income_money.amount - totals.expense_money.amount),
         breakdown_omitted_reason: "category breakdown is not available with an account filter"
       }
@@ -183,6 +189,7 @@ class Assistant::Function::GetIncomeStatement < Assistant::Function
         end_date: bucket.end_date,
         income: format_money(income),
         expenses: format_money(expenses),
+        invested: format_money(income_statement.invested_totals(period: bucket, account_ids: account_ids).net),
         net: format_money(income - expenses)
       }
     end
@@ -201,8 +208,20 @@ class Assistant::Function::GetIncomeStatement < Assistant::Function
         income: format_money(previous_totals.income_money.amount),
         expenses: format_money(previous_totals.expense_money.amount),
         net: format_money(previous_totals.income_money.amount - previous_totals.expense_money.amount),
+        invested: invested_json(income_statement.invested_totals(period: previous, account_ids: account_ids)),
         income_change: change_stats(previous_totals.income_money.amount, current_totals.income_money.amount),
         expenses_change: change_stats(previous_totals.expense_money.amount, current_totals.expense_money.amount)
+      }
+    end
+
+    # The Invested number reports in both settings modes: with contributions
+    # counted as expenses it says how much of "spending" was really investing;
+    # in savings mode it is the money shown outside Expenses entirely.
+    def invested_json(invested)
+      {
+        total: format_money(invested.net),
+        contributions: format_money(invested.contributions),
+        withdrawals: format_money(invested.withdrawals)
       }
     end
 

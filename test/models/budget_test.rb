@@ -191,6 +191,66 @@ class BudgetTest < ActiveSupport::TestCase
     )
   end
 
+  test "investment contributions stay out of budget actuals in savings mode" do
+    family = families(:empty)
+    family.update!(currency: "USD")
+    account = family.accounts.create!(name: "Checking", currency: "USD", balance: 0, accountable: Depository.new)
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+
+    Entry.create!(
+      account: account,
+      entryable: Transaction.create!(kind: "investment_contribution"),
+      date: Date.current,
+      name: "SoFi to Fidelity",
+      amount: 4000,
+      currency: "USD"
+    )
+    Entry.create!(
+      account: account,
+      entryable: Transaction.create!,
+      date: Date.current,
+      name: "Groceries",
+      amount: 200,
+      currency: "USD"
+    )
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 200.to_d, budget.actual_spending.to_d
+    assert_equal 4000.to_d, budget.actual_invested.to_d
+  end
+
+  test "investment contributions count in budget actuals in upstream mode" do
+    family = families(:empty)
+    family.update!(currency: "USD", investment_contributions_count_as_expenses: true)
+    account = family.accounts.create!(name: "Checking", currency: "USD", balance: 0, accountable: Depository.new)
+
+    budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)
+
+    Entry.create!(
+      account: account,
+      entryable: Transaction.create!(kind: "investment_contribution"),
+      date: Date.current,
+      name: "SoFi to Fidelity",
+      amount: 4000,
+      currency: "USD"
+    )
+    Entry.create!(
+      account: account,
+      entryable: Transaction.create!,
+      date: Date.current,
+      name: "Groceries",
+      amount: 200,
+      currency: "USD"
+    )
+
+    budget = Budget.find(budget.id)
+
+    assert_equal 4200.to_d, budget.actual_spending.to_d
+    assert_equal 4000.to_d, budget.actual_invested.to_d
+  end
+
   test "hide_in_budget account's transactions are excluded from actuals" do
     family = families(:dylan_family)
     budget = Budget.find_or_bootstrap(family, start_date: Date.current.beginning_of_month)

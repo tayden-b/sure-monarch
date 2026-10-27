@@ -81,6 +81,7 @@ en:
       cashflow_preview:
         node_labels:
           cash_flow: "Cash Flow"
+          investments: "Investments"
           surplus: "Surplus"
           deficit: "Deficit"
         title: "New Sankey chart"
@@ -141,6 +142,8 @@ en:
         chart_span: "Last %{count} months"
         income: "Income"
         expenses: "Expenses"
+        invested: "Invested"
+        invested_of_income: "%{percent} of income"
       spending_trend:
         title: "Spending"
         date_range: "%{start_date} to %{end_date}"

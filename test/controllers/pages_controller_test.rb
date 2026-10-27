@@ -172,6 +172,41 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-controller='bar-chart']"
   end
 
+  test "dashboard shows Invested card and sankey Investments node in savings mode" do
+    # Fixture families default to contributions-as-savings.
+    account = @family.accounts.create!(name: "Checking A", currency: @family.currency, balance: 0, accountable: Depository.new)
+    create_transaction(account: account, name: "Paycheck", amount: -2000)
+    create_transaction(account: account, name: "SoFi to Fidelity", amount: 1000, kind: "investment_contribution")
+    create_transaction(account: account, name: "Groceries", amount: 100)
+
+    get root_path
+    assert_response :ok
+
+    assert_select "#money-flow-section", text: /Invested/
+
+    chart = css_select("[data-controller='sankey-chart']").first
+    sankey_data = JSON.parse(chart["data-sankey-chart-data-value"])
+    investments_node = sankey_data.fetch("nodes").find { |node| node.fetch("id") == "investments_node" }
+    assert_not_nil investments_node, "expected an Investments node in the cash flow sankey"
+    assert_equal "Investments", investments_node["name"]
+    assert_equal 1000.0, investments_node["value"].to_d
+  end
+
+  test "dashboard has no Invested card or sankey Investments node in upstream mode" do
+    @family.update!(investment_contributions_count_as_expenses: true)
+    account = @family.accounts.create!(name: "Checking B", currency: @family.currency, balance: 0, accountable: Depository.new)
+    create_transaction(account: account, name: "SoFi to Fidelity", amount: 1000, kind: "investment_contribution")
+
+    get root_path
+    assert_response :ok
+
+    assert_select "#money-flow-section", text: /Invested/, count: 0
+
+    chart = css_select("[data-controller='sankey-chart']").first
+    sankey_data = JSON.parse(chart["data-sankey-chart-data-value"])
+    assert_not sankey_data.fetch("nodes").any? { |node| node.fetch("id") == "investments_node" }
+  end
+
   test "dashboard scopes money flow widget to selected month and accounts" do
     # Dedicated account (rather than @family.accounts.first) so fixture
     # transactions on other accounts can't skew the computed totals.

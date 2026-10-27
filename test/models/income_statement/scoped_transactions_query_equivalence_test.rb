@@ -11,6 +11,8 @@ class IncomeStatement::ScopedTransactionsQueryEquivalenceTest < ActiveSupport::T
 
   setup do
     @family = families(:empty)
+    # These tests assert upstream behaviour: contributions count as expenses.
+    @family.update!(investment_contributions_count_as_expenses: true)
 
     @checking = @family.accounts.create! name: "Checking", currency: "USD", balance: 5000, accountable: Depository.new
     @savings = @family.accounts.create! name: "Savings", currency: "USD", balance: 1000, accountable: Depository.new

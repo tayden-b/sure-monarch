@@ -142,6 +142,26 @@
           <%= icon("chevron-right", size: "sm", class: "text-secondary group-hover:text-primary transition-colors") %>
         </span>
       <% end %>
+
+      <%# Third card only in savings mode: when contributions count as
+          expenses, that money already sits inside the Expenses pill. %>
+      <% if money_flow_data[:show_invested] %>
+        <%= link_to transactions_path(q: { categories: [ money_flow_data[:invested_category] ], status: [ "confirmed" ], start_date: period.date_range.begin, end_date: period.date_range.end, account_ids: drilldown_account_ids }.compact),
+            class: "flex items-center justify-between p-3 border border-secondary rounded-lg hover:bg-container-inset-hover transition-colors group",
+            data: { turbo_frame: "_top" } do %>
+        <span class="flex items-center gap-2 text-sm text-primary">
+          <span class="w-2.5 h-2.5 rounded-full bg-info"></span>
+          <%= t(".invested") %>
+          <% if money_flow_data[:invested_percent_of_income] %>
+            <span class="text-xs text-secondary"><%= t(".invested_of_income", percent: number_to_percentage(money_flow_data[:invested_percent_of_income], precision: 1)) %></span>
+          <% end %>
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="text-sm font-medium tabular-nums text-primary privacy-sensitive"><%= format_money money_flow_data[:invested] %></span>
+          <%= icon("chevron-right", size: "sm", class: "text-secondary group-hover:text-primary transition-colors") %>
+        </span>
+      <% end %>
+      <% end %>
     </div>
   </div>
 </div>

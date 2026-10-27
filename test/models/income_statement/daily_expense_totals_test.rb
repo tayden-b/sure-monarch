@@ -5,6 +5,8 @@ class IncomeStatement::DailyExpenseTotalsTest < ActiveSupport::TestCase
 
   setup do
     @family = families(:empty)
+    # These tests assert upstream behaviour: contributions count as expenses.
+    @family.update!(investment_contributions_count_as_expenses: true)
     @checking = @family.accounts.create! name: "Checking", currency: @family.currency, balance: 5000, accountable: Depository.new
     @period = Period.custom(start_date: 9.days.ago.to_date, end_date: Date.current)
   end

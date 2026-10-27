@@ -60,8 +60,13 @@ module IncomeStatement::ScopedTransactionsQuery
       SQL
     end
 
+    # Kinds every income-statement query excludes from income/expense
+    # rollups. Family-aware: when the family treats contributions as savings,
+    # investment_contribution joins the list and every query class below
+    # (Totals, DailyExpenseTotals, FamilyStats, CategoryStats, MerchantTotals)
+    # drops it with no per-query branching.
     def budget_excluded_kinds_sql
-      @budget_excluded_kinds_sql ||= Transaction::BUDGET_EXCLUDED_KINDS.map { |k| "'#{k}'" }.join(", ")
+      @budget_excluded_kinds_sql ||= Transaction.expense_excluded_kinds(@family).map { |k| "'#{k}'" }.join(", ")
     end
 
     def pending_providers_sql(t = "t")

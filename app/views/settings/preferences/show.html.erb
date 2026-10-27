@@ -43,6 +43,16 @@
         <% if @user.family.uses_custom_month_start? %>
           <%= render DS::Alert.new(message: t(".month_start_day_warning"), variant: :warning) %>
         <% end %>
+        <% if Current.user.admin? %>
+          <div class="flex items-center justify-between">
+            <div class="space-y-1">
+              <p class="text-sm"><%= t(".investment_contributions_count_as_expenses") %></p>
+              <p class="text-secondary text-sm"><%= t(".investment_contributions_count_as_expenses_hint") %></p>
+            </div>
+            <%= family_form.toggle :investment_contributions_count_as_expenses,
+                data: { auto_submit_form_target: "auto" } %>
+          </div>
+        <% end %>
         <% if Current.user.admin? && preview_features_enabled? %>
           <div class="flex items-center justify-between">
             <div class="space-y-1">

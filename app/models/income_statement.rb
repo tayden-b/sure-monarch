@@ -167,6 +167,33 @@ class IncomeStatement
     totals(transactions_scope: scope, date_range: period.date_range)
   end
 
+  # "Invested" for a period: money that moved into investment accounts
+  # (kind investment_contribution outflows, including provider-booked
+  # Contribution/Buy activity) minus money that came back out
+  # (Withdrawal-labeled rows and transfers leaving investment accounts).
+  # Same statement scoping as the income/expense totals — the number always
+  # reports, though it only displaces expenses when
+  # #investments_as_savings? is on.
+  def invested_totals(period:, account_ids: nil)
+    scope = family.transactions.visible.excluding_pending.in_period(period)
+    scope = scope.where(entries: { account_id: account_ids }) if account_ids.present?
+
+    InvestedFlows.new(
+      family,
+      transactions_scope: scope,
+      date_range: period.date_range,
+      included_account_ids: included_account_ids,
+      account_flag: account_flag
+    ).call
+  end
+
+  # Monarch parity: when the family does not count contributions as
+  # expenses, the invested money becomes its own analytics branch (a Sankey
+  # node, a dashboard card) instead of sitting inside Expenses.
+  def investments_as_savings?
+    !family.investment_contributions_count_as_expenses?
+  end
+
   # Accounts actually reflected in totals/totals_for: visible, not flagged
   # out of this statement's purpose (reports or budget), not tax-advantaged,
   # and (when scoped to a user) included in that user's finances. Callers
@@ -276,14 +303,16 @@ class IncomeStatement
     def family_stats(interval: "month")
       @family_stats ||= {}
       @family_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "family_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash, family.entries_cache_version
+        "income_statement", "family_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash,
+        family.entries_cache_version, family.investment_contributions_count_as_expenses
       ]) { FamilyStats.new(family, interval:, account_ids: included_account_ids, account_flag: account_flag).call }
     end
 
     def category_stats(interval: "month")
       @category_stats ||= {}
       @category_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "category_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash, family.entries_cache_version
+        "income_statement", "category_stats", family.id, user&.id, interval, @purpose, included_account_ids_hash,
+        family.entries_cache_version, family.investment_contributions_count_as_expenses
       ]) { CategoryStats.new(family, interval:, account_ids: included_account_ids, account_flag: account_flag).call }
     end
 
@@ -309,10 +338,14 @@ class IncomeStatement
     # An IncomeStatement is a request-scoped reporting snapshot, like its memoized
     # period totals. Share these aggregate reads across totals and daily series.
     # Rates and target currency can change without touching entries or accounts.
+    # The contributions-as-expenses flag is a column on families, so toggling
+    # it touches nothing the rest of this key watches — it must be part of
+    # the key itself, or the last setting's totals keep being served.
     def cache_freshness_key
       @cache_freshness_key ||= [
         family.entries_cache_version, family.accounts.maximum(:updated_at)&.to_i,
-        family.currency, ExchangeRate.maximum(:updated_at)&.to_i
+        family.currency, ExchangeRate.maximum(:updated_at)&.to_i,
+        family.investment_contributions_count_as_expenses
       ]
     end
 

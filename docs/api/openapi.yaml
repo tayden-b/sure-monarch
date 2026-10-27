@@ -3251,13 +3251,17 @@ components:
       - basis
       - income
       - spending
+      - invested
       - net_savings
       - nodes
       - links
       description: Refunds net within each category. Parent direct amounts exclude
         child totals before partitioning by direction. Graph income/spending may differ
-        from gross monthly totals; net savings agrees. Decimal strings retain FX precision.
-        Empty flow has empty nodes and links.
+        from gross monthly totals; net savings agrees. When the family treats investment
+        contributions as savings, an investments node carries the period net invested
+        flow out of Cash Flow; in upstream mode invested is zero and the money stays
+        inside expense categories. Decimal strings retain FX precision. Empty flow
+        has empty nodes and links.
       properties:
         basis:
           type: string
@@ -3267,6 +3271,10 @@ components:
           type: string
         spending:
           type: string
+        invested:
+          type: string
+          description: Net invested flow for the period (contributions minus withdrawals);
+            zero when the family counts contributions as expenses
         net_savings:
           type: string
         nodes:
@@ -3294,6 +3302,7 @@ components:
                 enum:
                 - income
                 - expense
+                - investments
                 - cash_flow
                 - surplus
                 - deficit
@@ -3371,6 +3380,7 @@ components:
       - period
       - income
       - spending
+      - invested
       - net_savings
       - savings_rate
       - spending_comparison
@@ -3391,6 +3401,11 @@ components:
           type: string
         spending:
           type: string
+        invested:
+          type: string
+          description: Net invested flow for the month (contributions minus withdrawals).
+            Reported in both settings modes; a component of net_savings, not additional
+            to it
         net_savings:
           type: string
         sankey:

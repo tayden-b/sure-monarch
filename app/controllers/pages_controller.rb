@@ -50,7 +50,7 @@ class PagesController < ApplicationController
     expense_totals = income_statement.expense_totals(period: @period)
     net_totals = income_statement.net_category_totals(period: @period)
 
-    @cashflow_sankey_data = build_cashflow_sankey_data(net_totals, income_totals, expense_totals, family_currency)
+    @cashflow_sankey_data = build_cashflow_sankey_data(net_totals, income_totals, expense_totals, family_currency, income_statement:)
     @outflows_data = build_outflows_donut_data(net_totals)
     # Preview-gated: skip the query outright rather than loading rows the
     # section won't be built from.
@@ -259,7 +259,12 @@ class PagesController < ApplicationController
       Provider::Registry.get_provider(:github)
     end
 
-    def build_cashflow_sankey_data(net_totals, income_totals, expense_totals, currency)
+    # `income_statement` supplies the Invested branch: when the family treats
+    # contributions as savings, their net outflow leaves the expense
+    # categories (already excluded from net_totals upstream) and gets its own
+    # Investments node fed by Cash Flow. In upstream mode the money already
+    # sits inside the expense categories, so adding a node would double-count.
+    def build_cashflow_sankey_data(net_totals, income_totals, expense_totals, currency, income_statement:)
       nodes = []
       links = []
       node_indices = {}
@@ -292,10 +297,19 @@ class PagesController < ApplicationController
         flow_direction: :inbound
       )
 
+      # Investments branch (Monarch parity): cash moved into investment
+      # accounts this period flows Cash Flow -> Investments, then the
+      # remainder lands in Surplus. A net withdrawal folds back into Surplus
+      # rather than drawing an inbound branch. Expense categories are
+      # measured against the combined outflows so the side's percentages
+      # still sum to 100.
+      invested = income_statement.investments_as_savings? ? [ income_statement.invested_totals(period: @period).net.to_f.round(2), 0 ].max : 0.0
+      outflows = total_expense + invested
+
       # Process net expense categories (flow: cash_flow -> parent -> subcategory)
       process_net_category_nodes(
         categories: net_totals.net_expense_categories,
-        total: total_expense,
+        total: outflows,
         prefix: "expense",
         net_subcategories_by_parent: net_subcategories_by_parent,
         add_node: add_node,
@@ -304,8 +318,14 @@ class PagesController < ApplicationController
         flow_direction: :outbound
       )
 
+      if invested.positive?
+        percentage = outflows.zero? ? 0 : (invested / outflows * 100).round(1)
+        idx = add_node.call("investments_node", "Investments", invested, percentage, "var(--color-info)")
+        links << { source: cash_flow_idx, target: idx, value: invested, color: "var(--color-info)", percentage: percentage }
+      end
+
       # Surplus/Deficit
-      net = (total_income - total_expense).round(2)
+      net = (total_income - total_expense - invested).round(2)
       if net.positive?
         percentage = total_income.zero? ? 0 : (net / total_income * 100).round(1)
         idx = add_node.call("surplus_node", "Surplus", net, percentage, "var(--color-success)")
@@ -628,6 +648,10 @@ class PagesController < ApplicationController
         }
       end
 
+      savings_mode = income_statement.investments_as_savings?
+      invested = income_statement.invested_totals(period: selected_period, account_ids: account_ids)
+      income_amount = selected_totals.income_money.amount
+
       {
         bars: bars,
         period: selected_period,
@@ -635,6 +659,14 @@ class PagesController < ApplicationController
         income: selected_totals.income_money,
         expense: selected_totals.expense_money,
         balance: selected_totals.income_money - selected_totals.expense_money,
+        show_invested: savings_mode,
+        invested: Money.new(invested.net, income_statement.family.currency),
+        invested_percent_of_income: income_amount.zero? ? nil : (invested.net / income_amount * 100).round(1),
+        # Drill-down lands on the auto-assigned contributions category — the
+        # same rows Invested totals count. Only resolved in savings mode:
+        # the lookup creates the category if missing, which upstream-mode
+        # families should not get as a dashboard side effect.
+        invested_category: savings_mode ? Current.family.investment_contributions_category.name : nil,
         account_ids: account_ids
       }
     end

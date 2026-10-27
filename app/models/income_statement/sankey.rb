@@ -11,14 +11,25 @@ class IncomeStatement::Sankey
     groups = category_groups
     income = groups.sum { |group| side_total(group, :income) }.to_d
     spending = groups.sum { |group| side_total(group, :expense) }.to_d
-    capacity = [ income, spending ].max
+    # When the family counts contributions as expenses the money is already
+    # inside the expense categories — a separate Investments branch would
+    # double-count it, so the branch only exists in savings mode. A negative
+    # net (more withdrawn than contributed) is folded back into surplus
+    # rather than drawn as an inbound branch.
+    invested = @statement.investments_as_savings? ? [ @statement.invested_totals(period: @period).net.to_d, 0 ].max : 0.to_d
+    outflows = spending + invested
+    capacity = [ income, outflows ].max
     unless capacity.zero?
       center = add_node("cash_flow_node", "Cash Flow", :cash_flow, capacity, 100)
       groups.each do |group|
         add_group(group, :income, income, center)
-        add_group(group, :expense, spending, center)
+        add_group(group, :expense, outflows, center)
       end
-      net = income - spending
+      if invested.positive?
+        index = add_node("investments_node", "Investments", :investments, invested, percentage(invested, outflows))
+        add_link(center, index, invested, percentage(invested, outflows))
+      end
+      net = income - outflows
       unless net.zero?
         kind = net.positive? ? :surplus : :deficit
         index = add_node("#{kind}_node", kind.to_s.capitalize, kind, net.abs, percentage(net.abs, capacity))
@@ -27,7 +38,7 @@ class IncomeStatement::Sankey
       end
     end
     { basis: "net_by_category", income: decimal(income), spending: decimal(spending),
-      net_savings: decimal(income - spending), nodes: @nodes, links: @links }
+      invested: decimal(invested), net_savings: decimal(income - outflows), nodes: @nodes, links: @links }
   end
 
   private

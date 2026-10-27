@@ -153,7 +153,7 @@ class Transaction::Search
       # this list, the uncategorized badge count and the Quick Categorize
       # wizard can't drift apart. https://github.com/we-promise/sure/issues/2592
       uncategorized_condition = "categories.id IS NULL AND transactions.kind NOT IN (?)"
-      uncategorized_excluded_kinds = Transaction::UNCATEGORIZED_EXCLUDED_KINDS
+      uncategorized_excluded_kinds = Transaction.uncategorized_excluded_kinds(family)
 
       # Build condition based on whether parent_category_ids is empty
       if parent_category_ids.empty?

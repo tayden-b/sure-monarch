@@ -26,7 +26,7 @@ export function cashFlowChartData(body) {
       typeof node.id !== "string" ||
       ids.has(node.id) ||
       typeof node.name !== "string" ||
-      !["income", "expense", "cash_flow", "surplus", "deficit"].includes(
+      !["income", "expense", "investments", "cash_flow", "surplus", "deficit"].includes(
         node.kind,
       )
     ) {
@@ -35,9 +35,11 @@ export function cashFlowChartData(body) {
     ids.add(node.id);
     const color = /^#[0-9a-f]{6}$/i.test(node.color)
       ? node.color
-      : ["expense", "deficit"].includes(node.kind)
-        ? "var(--color-destructive)"
-        : "var(--color-success)";
+      : node.kind === "investments"
+        ? "var(--color-info)"
+        : ["expense", "deficit"].includes(node.kind)
+          ? "var(--color-destructive)"
+          : "var(--color-success)";
     const value = number(node.value),
       percentage = number(node.percentage);
     if (value <= 0 || percentage > 100)

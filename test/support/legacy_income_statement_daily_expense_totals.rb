@@ -100,7 +100,7 @@ class LegacyIncomeStatementDailyExpenseTotals
     end
 
     def budget_excluded_kinds_sql
-      @budget_excluded_kinds_sql ||= Transaction::BUDGET_EXCLUDED_KINDS.map { |k| "'#{k}'" }.join(", ")
+      @budget_excluded_kinds_sql ||= Transaction.expense_excluded_kinds(@family).map { |k| "'#{k}'" }.join(", ")
     end
 
     def validate_date_range!

@@ -5,6 +5,8 @@ class IncomeStatementTest < ActiveSupport::TestCase
 
   setup do
     @family = families(:empty)
+    # These tests assert upstream behaviour: contributions count as expenses.
+    @family.update!(investment_contributions_count_as_expenses: true)
 
     @income_category = @family.categories.create! name: "Income"
     @food_category = @family.categories.create! name: "Food"
