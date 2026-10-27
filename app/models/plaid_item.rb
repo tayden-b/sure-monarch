@@ -34,6 +34,31 @@ class PlaidItem < ApplicationRecord
 
   TRANSACTIONS_REFRESH_COOLDOWN = 5.minutes
 
+  # Raised when an OAuth institution reports missing user consent on a core
+  # product during sync. Carries a human-readable message so the failed sync
+  # tells the user to reconnect and grant access, instead of storing Plaid's
+  # raw HTTP 400 body.
+  class ConsentRequiredError < StandardError
+    attr_reader :product, :error_code
+
+    def initialize(product:, error_code:, item_name:)
+      @product = product
+      @error_code = error_code
+      super(
+        "Plaid says this connection is missing consent for #{product}. " \
+        "Reconnect #{item_name} and grant access to #{product} to resume syncing."
+      )
+    end
+  end
+
+  # Key inside raw_payload (otherwise the verbatim /item/get snapshot) holding
+  # our own record of products Plaid refused to serve on the latest sync —
+  # missing consent, unsupported institution, no matching accounts, or data
+  # still being prepared. Each sync's item snapshot replaces raw_payload
+  # wholesale, so these entries always reflect the most recent sync: a product
+  # that recovers drops off on its own.
+  PARTIAL_CONSENT_KEY = "partial_consent"
+
   # Get accounts from both new and legacy systems
   def accounts
     @accounts ||= plaid_accounts
@@ -162,7 +187,60 @@ class PlaidItem < ApplicationRecord
     supported_products.include?(product)
   end
 
+  # Records that Plaid refused to serve a product for this item. `retryable`
+  # marks codes Plaid resolves without user action (PRODUCT_NOT_READY) — the
+  # next sync re-attempts the fetch rather than treating it as declined.
+  def record_unavailable_product!(product, error_code:, retryable:)
+    payload = raw_payload_hash
+    products = payload[PARTIAL_CONSENT_KEY].is_a?(Hash) ? payload[PARTIAL_CONSENT_KEY] : {}
+
+    payload[PARTIAL_CONSENT_KEY] = products.merge(
+      product.to_s => {
+        "error_code" => error_code,
+        "retryable" => retryable,
+        "recorded_at" => Time.current.iso8601
+      }
+    )
+
+    # update_columns, not update!: this runs mid-import inside the accounts
+    # transaction, where the association holds not-yet-validated plaid_accounts
+    # that would fail the item's own validation.
+    update_columns(raw_payload: payload, updated_at: Time.current)
+  end
+
+  # Products Plaid refused on the latest sync, keyed by product name with the
+  # error details captured at fetch time.
+  def unavailable_products
+    raw_payload.is_a?(Hash) ? (raw_payload[PARTIAL_CONSENT_KEY] || {}) : {}
+  end
+
+  def partial_consent?
+    unavailable_products.present?
+  end
+
+  # Products that will be re-fetched automatically next sync (e.g.
+  # PRODUCT_NOT_READY) vs. those needing the user to reconnect and grant
+  # access — the split drives the connection card's notice copy.
+  def retryable_unavailable_product_names
+    unavailable_products.select { |_product, details| details["retryable"] }.keys
+  end
+
+  def declined_unavailable_product_names
+    unavailable_products.reject { |_product, details| details["retryable"] }.keys
+  end
+
   private
+    # Between `upsert_plaid_snapshot!` and the next `reload`, the raw_payload
+    # attribute still holds the Plaid::Item object that was assigned — the
+    # JSON round-trip that turns it into a plain Hash hasn't happened yet.
+    # `to_hash` reproduces that shape so a partial-consent note merges into
+    # the real snapshot instead of replacing it.
+    def raw_payload_hash
+      payload = raw_payload
+      payload = payload.to_hash if payload.respond_to?(:to_hash) && !payload.is_a?(Hash)
+      payload.is_a?(Hash) ? payload.deep_dup : {}
+    end
+
     def transactions_refresh_cache_key
       "plaid_item:#{id}:transactions_refresh_requested"
     end

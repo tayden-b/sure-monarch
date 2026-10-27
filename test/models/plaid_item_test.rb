@@ -217,4 +217,44 @@ class PlaidItemTest < ActiveSupport::TestCase
 
     @plaid_item.sync_later_with_provider_refresh
   end
+
+  test "unavailable product helpers split retryable from declined" do
+    @plaid_item.update!(raw_payload: {
+      "item_id" => "item_1",
+      PlaidItem::PARTIAL_CONSENT_KEY => {
+        "liabilities" => { "error_code" => "ADDITIONAL_CONSENT_REQUIRED", "retryable" => false },
+        "investments" => { "error_code" => "PRODUCT_NOT_READY", "retryable" => true }
+      }
+    })
+
+    assert @plaid_item.partial_consent?
+    assert_equal %w[investments], @plaid_item.retryable_unavailable_product_names
+    assert_equal %w[liabilities], @plaid_item.declined_unavailable_product_names
+  end
+
+  test "record_unavailable_product! merges products into one note" do
+    @plaid_item.record_unavailable_product!("liabilities", error_code: "ADDITIONAL_CONSENT_REQUIRED", retryable: false)
+    @plaid_item.record_unavailable_product!("investments", error_code: "PRODUCT_NOT_READY", retryable: true)
+
+    products = @plaid_item.reload.unavailable_products
+    assert_equal %w[investments liabilities], products.keys.sort
+  end
+
+  test "record_unavailable_product! preserves a just-assigned provider snapshot" do
+    # Between upsert_plaid_snapshot! and the next reload, raw_payload still
+    # holds the provider object, not a Hash — the flag must merge into it
+    # rather than replace the snapshot.
+    snapshot_object = Object.new
+    snapshot_object.define_singleton_method(:to_hash) do
+      { "item_id" => "item_1", "consented_products" => [ "transactions" ] }
+    end
+    @plaid_item.raw_payload = snapshot_object
+
+    @plaid_item.record_unavailable_product!("liabilities", error_code: "ADDITIONAL_CONSENT_REQUIRED", retryable: false)
+
+    @plaid_item.reload
+    assert_equal "item_1", @plaid_item.raw_payload["item_id"]
+    assert_equal "ADDITIONAL_CONSENT_REQUIRED",
+      @plaid_item.unavailable_products.dig("liabilities", "error_code")
+  end
 end

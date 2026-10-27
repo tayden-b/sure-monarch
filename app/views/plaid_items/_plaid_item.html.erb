@@ -83,6 +83,32 @@
 
     <% unless plaid_item.scheduled_for_deletion? %>
       <div class="space-y-4 mt-4">
+        <% if plaid_item.partial_consent? %>
+          <%= render DS::Alert.new(variant: :warning) do %>
+            <div class="space-y-1">
+              <% if plaid_item.declined_unavailable_product_names.any? %>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <%= t(".partial_consent", products: plaid_item.declined_unavailable_product_names.map(&:humanize).to_sentence) %>
+                  </span>
+                  <% if plaid_item.manageable_by?(Current.user) %>
+                    <%= render DS::Link.new(
+                      text: t(".reconnect"),
+                      icon: "refresh-cw",
+                      variant: "secondary",
+                      href: edit_plaid_item_path(plaid_item),
+                      frame: "modal"
+                    ) %>
+                  <% end %>
+                </div>
+              <% end %>
+              <% if plaid_item.retryable_unavailable_product_names.any? %>
+                <p><%= t(".partial_consent_retrying", products: plaid_item.retryable_unavailable_product_names.map(&:humanize).to_sentence) %></p>
+              <% end %>
+            </div>
+          <% end %>
+        <% end %>
+
         <%# NOTE: no per-viewer filtering here. This partial is also rendered
             by PlaidItem::SyncCompleteEvent from the sync job, where
             Current.user is nil (same gotcha as accounts/_sync_controls), so a
